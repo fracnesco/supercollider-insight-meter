@@ -294,4 +294,4 @@ Bug reports and questions are welcome in
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+GPL-3.0-or-later - see [LICENSE](LICENSE).
