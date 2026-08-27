@@ -1,0 +1,86 @@
+TITLE:: InsightLoudness
+summary:: loudness the way ITU-R BS.1770 and EBU R128 mean it
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightSpectrum
+
+DESCRIPTION::
+The loudness half of link::Classes/Insight::, on its own. The server does the part that has to run per sample - the K-weighting filter and a running mean square over the last 100 ms - and hands one block of those mean squares, one per channel, to this ten times a second. Everything else is bookkeeping, worked out here in the language.
+
+code::
+l = InsightLoudness(2);
+l.add([0.001, 0.001]);         // one block: mean square per channel
+l.momentary;                   // -> LUFS, the last 400 ms
+l.shortTerm;                   // -> LUFS, the last 3 s
+l.integrated;                  // -> LUFS, everything since reset, gated
+l.range;                       // -> LU, the loudness range
+l.maxMomentary; l.maxShortTerm;
+l.reset;
+::
+
+The four measures follow BS.1770 and EBU R128 / Tech 3342:
+
+list::
+## strong::momentary:: - the mean of the last four blocks (400 ms).
+## strong::shortTerm:: - the last thirty blocks (3 s).
+## strong::integrated:: - every block since reset, gated: blocks below -70 LUFS are dropped, then blocks more than 10 LU below the mean of what is left are dropped too, and the rest is averaged.
+## strong::range:: (LRA) - the spread between the 10th and 95th percentile of the short term values, after a -70 LUFS absolute and a -20 LU relative gate.
+::
+
+The gated statistics are histograms 0.1 LU wide, so a session that has run for hours costs no more per block than one that has run for seconds. Silence is answered as code::-inf::. A 5.1 layout weights the surrounds by +1.5 dB and leaves the LFE out; any other channel count is weighted evenly.
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: channels
+how many channels a block carries.
+RETURNS:: an InsightLoudness.
+
+METHOD:: loudnessOf
+The loudness of a weighted mean-square power, in LUFS: code::-0.691 + 10 * power.log10::, or code::-inf:: for silence.
+
+METHOD:: weightsFor
+The channel weights for a layout: code::[1, 1, 1, 0, 1.41, 1.41]:: for 5.1 (six channels), even otherwise.
+
+METHOD:: absoluteGate
+METHOD:: relativeGate
+METHOD:: rangeGate
+The gate thresholds, in LU: -70 absolute, -10 relative for the integrated value, -20 relative for the range.
+
+INSTANCEMETHODS::
+
+private:: prMean, prWeighted, prBin, prBinLoudness, prIntegrated, prRange
+
+METHOD:: add
+One block: the mean square of the K-weighted signal, one value per channel. Updates every measure.
+ARGUMENT:: powers
+an Array of mean-square values, one per channel.
+RETURNS:: this.
+
+METHOD:: momentary
+METHOD:: shortTerm
+METHOD:: integrated
+METHOD:: range
+The four measures, in LUFS (LU for range).
+
+METHOD:: maxMomentary
+METHOD:: maxShortTerm
+The highest momentary and short term values since reset.
+
+METHOD:: duration
+Seconds integrated: the blocks are 100 ms each.
+
+METHOD:: channels
+How many channels a block carries.
+
+METHOD:: reset
+Forget everything: the histograms, the ring of recent blocks, the held maxima.
+
+EXAMPLES::
+
+code::
+// a constant -20 dBFS block, K gain taken out, reads -20.7 LUFS
+l = InsightLoudness(2);
+40.do { l.add([0.005, 0.005]) };
+l.integrated;                  // ~ -20.69
+l.reset;
+::

@@ -1,0 +1,11 @@
+(
+	name: "Insight",
+	summary: "a sound engineer's window on a bus: spectrum, loudness, true peak, image",
+	version: "0.1.0",
+	author: "Francesco Corvi",
+	url: "https://github.com/fracnesco/sc-insight.git",
+	license: "MIT",
+	copyright: "Copyright (c) 2026 Francesco Corvi",
+	schelp: "HelpSource",
+	dependencies: []
+)

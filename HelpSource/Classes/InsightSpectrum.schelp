@@ -1,0 +1,90 @@
+TITLE:: InsightSpectrum
+summary:: one FFT frame folded into log spaced bands, with falling traces
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightLoudness, Classes/FFT
+
+DESCRIPTION::
+The spectrum half of link::Classes/Insight::, on its own. A synth does one link::Classes/FFT:: and nothing else - it fills a buffer and never reads it back - and the language fetches that buffer a frame at a time and hands it here. This takes the loudest bin in each of its log spaced bands, which is the point of reducing it in the language rather than on the server: a band near the top of the range covers a hundred bins, and a tone in it is in one of them.
+
+code::
+sp = InsightSpectrum(4096, 48000);
+sp.take(frame, 0.066);         // a frame from b_getn, and the seconds since the last
+sp.levels;                     // dB per band, falling at fallDb a second
+sp.peaks;                      // the same, falling slower
+sp.maxima;                     // the loudest in each band since resetMaxima
+sp.freqs;                      // the frequency each band sits at
+::
+
+Three traces, so the picture says three things at once: what is there now, what was there a moment ago, and the loudest there has been since the last reset. code::smoothing:: averages the power first, for a display that moves like a slow analyser. A full scale sine through the Hann window peaks at N/4 in its bin, so that is where 0 dB is.
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: fftSize
+the FFT size the frames come from.
+ARGUMENT:: sampleRate
+the rate the server is running at, which sets where each bin sits.
+RETURNS:: an InsightSpectrum.
+
+METHOD:: numBands
+How many bands are kept, log spaced. 128 by default.
+
+METHOD:: minFreq
+METHOD:: maxFreq
+The ends of the range, 20 Hz to 20 kHz.
+
+METHOD:: fallDb
+METHOD:: peakFallDb
+How fast the two falling traces fall, in dB a second.
+
+INSTANCEMETHODS::
+
+private:: prBandBins
+
+METHOD:: take
+Fold one frame into the bands and let the traces fall.
+ARGUMENT:: frame
+the buffer contents: DC at 0, nyquist at 1, then bin k as the pair at 2k and 2k+1.
+ARGUMENT:: dt
+seconds since the last frame, so the falls are per second however fast frames arrive.
+RETURNS:: this.
+
+METHOD:: levels
+METHOD:: peaks
+METHOD:: maxima
+dB per band: the current trace, the slower one, and the held maximum.
+
+METHOD:: freqs
+The centre frequency of each band.
+
+METHOD:: fetchCount
+How many values of a frame are worth reading: up to the top of the drawn range.
+
+METHOD:: levelAt
+METHOD:: maximumAt
+The trace, or the held maximum, at a frequency - the band it falls in.
+ARGUMENT:: freq
+a frequency in Hz.
+
+METHOD:: posOf
+METHOD:: freqAt
+Between 0 and 1 across the range, and back: what a grid line and a hover readout want.
+
+METHOD:: smoothing
+The display average, 0 to 0.95.
+
+METHOD:: floorDb
+METHOD:: topDb
+The ends of the dB scale.
+
+METHOD:: hold
+Whether to keep the per-band maxima.
+
+METHOD:: reset
+Clear the traces and the maxima.
+
+METHOD:: resetMaxima
+Clear just the held maxima.
+
+METHOD:: clear
+Clear the moving traces, keeping the maxima - what a stop shows.

@@ -1,0 +1,228 @@
+TITLE:: Insight
+summary:: a sound engineer's window on a bus: spectrum, loudness, true peak, image
+categories:: Libraries>Insight
+related:: Classes/InsightLoudness, Classes/InsightSpectrum, Classes/BusManager, Classes/Bus
+
+DESCRIPTION::
+Point it at a bus - by index, by strong::BusManager:: name, by link::Classes/Bus::, or at a module - and it shows what a mastering chain wants to know: the spectrum, the levels with true peak, loudness the way EBU R128 means it, and the stereo image. One synth does the per-sample work and the window draws what it finds.
+
+code::
+s.boot;
+Insight(\main, 0, 2);          // bus 0, two channels: the main out
+Insight.at(\main).gui;         // the window
+
+Insight.open;                  // or, in one line, on the main out
+::
+
+Everything you reach it by is on the class: there is one insight per name, the way there is one server, and code::Insight.at:: looks a name up again from anywhere. Nothing is ever allocated on the bus it watches and nothing is freed - an insight only reads, which is what makes it safe to point at anything.
+
+It depends on nothing. When strong::BusManager:: is installed alongside it, the bus can be a name, and the insight follows that name from then on - see link::#Buses by name::. When strong::ServerView:: is installed, its meter section grows a button that opens an insight on the main out.
+
+subsection:: What it measures
+
+list::
+## strong::spectrum:: - log frequency, the peak in each of 128 bands, with three traces: now, a moment ago, and the loudest in each band since reset.
+## strong::levels:: - true peak (ITU-R BS.1770, four times oversampled), sample peak and rms per channel, each holding its highest value until reset.
+## strong::loudness:: - momentary (400 ms), short term (3 s), integrated and loudness range, K-weighted and gated as BS.1770 and EBU R128 / Tech 3342 spell out.
+## strong::image:: - a goniometer of the stereo pair, with correlation, balance and width.
+::
+
+A hint bar along the bottom of the window says what each control does and, for the meters, exactly what each reading measures - hover the code::I:: number, code::TP::, or the goniometer.
+
+subsection:: Buses by name
+
+With link::Classes/BusManager:: installed, the bus can be a Symbol:
+
+code::
+BusManager.add(\reverb, 2);
+Insight(\verb, \reverb);       // follows the name from now on
+Insight.at(\verb).bus_(\out3_4);
+::
+
+An insight set to a name follows it: when the bus behind it moves - which it does when the server reboots - the insight goes with it. Setting the bus to a plain index unbinds it again. A name that resolves to nothing changes nothing, unless there is no bus yet, in which case the name is kept and waited for.
+
+subsection:: Running
+
+The analysis is one synth and the language reading its replies, a few messages a second. It is off until something asks for it: opening the window starts it, closing the window stops it again, unless it was already running.
+
+code::
+i = Insight.at(\main);
+i.run;
+i.loudness.integrated;         // LUFS since reset
+i.maxTruePeakDb;               // the highest true peak, dBTP
+i.reset;                       // integrate again, drop every held maximum
+i.stop;
+::
+
+subsection:: Server restarts
+
+The analysis registers with code::ServerBoot::, code::ServerTree:: and code::ServerQuit::. A boot takes every node and buffer; the synth and its buffers are made again on the tree hook, and an insight following a name looks its bus up again. cmd + period rebuilds the synth. A quit leaves the picture quiet.
+
+
+CLASSMETHODS::
+
+METHOD:: new
+Make an insight under a name, replacing any insight already under that name (its synth and window are freed first).
+ARGUMENT:: name
+a Symbol. The insight is registered under it and found again with link::#*at::.
+ARGUMENT:: bus
+what to analyse: an Integer (a bus index), a link::Classes/Bus::, a Symbol (a BusManager name to follow), or a module (its code::tapBus:: is read).
+ARGUMENT:: channels
+how many channels to analyse, from the start of the bus. Taken from the Bus or the named entry when they say; 2 by default.
+ARGUMENT:: server
+the link::Classes/Server::. code::Server.default:: unless given.
+RETURNS:: the Insight.
+
+METHOD:: at
+The insight registered under a name, or nil.
+RETURNS:: an Insight.
+
+METHOD:: names
+Every insight's name, sorted.
+
+METHOD:: all
+The registry: name to Insight.
+
+METHOD:: main
+The insight on the main out, bus 0, two channels - made the first time it is asked for.
+RETURNS:: an Insight.
+
+METHOD:: open
+The main out, window and all: makes link::#*main:: if needed and opens its window. What the ServerView button calls.
+RETURNS:: an Insight.
+
+METHOD:: gui
+Open the window of the named insight, making the main-out insight if the name is unknown and nothing is there.
+
+METHOD:: freeAll
+Free every insight.
+
+
+INSTANCEMETHODS::
+
+private:: prGuiClosed, update, init, prResolve, prSetBus, prUpdateRegistryLink, prBusMoved, prChannelsChanged, prResetArrays, prResetLive, prRestartNodes, prStart, prStopNodes, prStopPolling, prStartResponders, prFreeResponders, prLevels, prLoud, prStartPoller, prPoll, prGetnMsgs, prChunk, prEnsureSetup, prRemoveHooks, prOnBoot, prOnTree, prOnQuit
+
+METHOD:: bus
+The index of the bus being read, or nil while a name is unknown. Setting it takes an index, a link::Classes/Bus::, a BusManager name, or a module - the same as link::#*new::'s code::bus::.
+
+METHOD:: busName
+The BusManager name the insight is following, or nil when it is on a bare index.
+
+METHOD:: busLabel
+What the window shows: the name followed, or the index, or code::"?"::.
+
+METHOD:: channels
+How many channels are analysed. Setting it rebuilds the synth.
+
+METHOD:: run
+Start the analysis synth.
+
+METHOD:: stop
+Stop it.
+
+METHOD:: running
+Whether it has been asked to run.
+
+METHOD:: isAlive
+Whether the synth is up and its replies are arriving.
+
+METHOD:: reset
+Integrate again from now, and drop every held maximum: the loudness statistics, the highest peaks, the over count, the spectrum's held trace and the history.
+
+METHOD:: loudness
+The link::Classes/InsightLoudness:: - momentary, short term, integrated, range.
+
+METHOD:: spectrum
+The link::Classes/InsightSpectrum:: - the bands, and the falling traces.
+
+METHOD:: peaks
+METHOD:: truePeaks
+METHOD:: rms
+Amplitude per channel from the last reply: the sample peak, the true peak, and the rms.
+
+METHOD:: maxPeaks
+METHOD:: maxTruePeaks
+The highest per channel since reset, as amplitudes.
+
+METHOD:: maxTruePeakDb
+METHOD:: maxPeakDb
+The highest of any channel since reset, in dB.
+
+METHOD:: overs
+How many times a true peak has crossed the ceiling since reset.
+
+METHOD:: correlation
+The interchannel correlation of the first pair, -1 (out of phase) to +1 (mono).
+
+METHOD:: width
+The stereo width: 0 is mono, 1 is fully spread, more than 1 is out of phase.
+
+METHOD:: balance
+Left to right, -1 to +1, from the rms of the two channels.
+
+METHOD:: history
+The short term loudness of the last link::#-historySeconds:: seconds, one value per 100 ms block.
+
+METHOD:: fftSize
+The FFT size, one of code::Insight.fftSizes::. Setting it rebuilds the synth and the spectrum.
+
+METHOD:: source
+What the spectrum is of: code::\sum::, code::\left::, code::\right::, code::\mid:: or code::\side::.
+
+METHOD:: tilt
+dB per octave added to the drawn spectrum, so pink noise reads flat at 3. A display setting.
+
+METHOD:: smoothing
+How much the spectrum is averaged over time, 0 to 0.95.
+
+METHOD:: hold
+Whether to keep the loudest-per-band trace.
+
+METHOD:: spectrumFloor
+The bottom of the spectrum's dB scale.
+
+METHOD:: target
+The loudness aimed at, in LUFS: drawn across the loudness bars and the history. A mark, not a limit.
+
+METHOD:: ceiling
+The true peak level, in dBTP, past which a reading is an over. A mark, not a limiter.
+
+METHOD:: historySeconds
+How many seconds of short term loudness the history keeps.
+
+METHOD:: imagerFrames
+How many frames the goniometer shows at once.
+
+METHOD:: gui
+Open, or bring to the front, this insight's window.
+RETURNS:: an InsightGUI.
+
+METHOD:: free
+Stop the analysis, close the window, and take the insight out of the registry.
+
+
+EXAMPLES::
+
+code::
+s.boot;
+
+// point it at the main out and watch
+Insight.open;
+
+// something to look at
+(
+x = { Splay.ar(SinOsc.ar([220, 440, 660, 990] * LFNoise0.kr(2).range(1, 1.02), 0, 0.1)) }.play;
+)
+
+// read it in code
+i = Insight.at(\main);
+i.loudness.integrated;
+i.maxTruePeakDb;
+i.correlation;
+
+i.target = -14;      // aim for -14 LUFS
+i.reset;             // start the integration over
+
+x.free;
+Insight.freeAll;
+::
