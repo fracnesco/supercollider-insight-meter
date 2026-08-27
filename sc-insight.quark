@@ -4,7 +4,7 @@
 	version: "0.1.0",
 	author: "Francesco Corvi",
 	url: "https://github.com/fracnesco/sc-insight.git",
-	license: "MIT",
+	license: "GPL-3.0-or-later",
 	copyright: "Copyright (c) 2026 Francesco Corvi",
 	schelp: "HelpSource",
 	dependencies: []
