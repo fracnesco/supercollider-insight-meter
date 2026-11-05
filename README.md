@@ -18,7 +18,7 @@ Insight.open;
 
 It depends on nothing - no plugins, no other quarks. If **BusManager** happens
 to be installed alongside it, an insight can be pointed at a bus by name and
-follows that name from then on. If **ServerView** is installed, its meter
+follows that name from then on. If **ServerPanel** is installed, its meter
 section grows a button that opens an insight on the main out - see
 [Integration](#integration) below.
 
@@ -241,15 +241,15 @@ are only drawn, so you can see how far from -14 LUFS and -1 dBTP the signal is.
 Covered above: the bus can be a name, and the insight follows it. BusManager is
 looked up at runtime, so nothing here needs it to compile.
 
-### With ServerView
+### With ServerPanel
 
-If [ServerView](https://github.com/scztt/ServerView.quark) is installed, its
+If [ServerPanel](https://github.com/scztt/ServerPanel.quark) is installed, its
 meter/scope section grows a small **i** button, and its menu and keyboard both
 gain an **Insight** action (the `i` key): either opens an insight on the main
 out of that server, bus 0. The button only exists when the `Insight` class does,
-so ServerView compiles and runs exactly as before without this extension.
+so ServerPanel compiles and runs exactly as before without this extension.
 
-The button is added in `ServerView.sc`, in `ScopeWidget:view`, behind a
+The button is added in `ServerPanel.sc`, in `ScopeWidget:view`, behind a
 `\Insight.asClass.notNil` check - a runtime lookup, never a compile-time
 reference.
 

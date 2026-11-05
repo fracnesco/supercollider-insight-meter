@@ -16,7 +16,7 @@ Insight.open;                  // or, in one line, on the main out
 
 Everything you reach it by is on the class: there is one insight per name, the way there is one server, and code::Insight.at:: looks a name up again from anywhere. Nothing is ever allocated on the bus it watches and nothing is freed - an insight only reads, which is what makes it safe to point at anything.
 
-It depends on nothing. When strong::BusManager:: is installed alongside it, the bus can be a name, and the insight follows that name from then on - see link::#Buses by name::. When strong::ServerView:: is installed, its meter section grows a button that opens an insight on the main out.
+It depends on nothing. When strong::BusManager:: is installed alongside it, the bus can be a name, and the insight follows that name from then on - see link::#Buses by name::. When strong::ServerPanel:: is installed, its meter section grows a button that opens an insight on the main out.
 
 subsection:: What it measures
 
@@ -88,7 +88,7 @@ The insight on the main out, bus 0, two channels - made the first time it is ask
 RETURNS:: an Insight.
 
 METHOD:: open
-The main out, window and all: makes link::#*main:: if needed and opens its window. What the ServerView button calls.
+The main out, window and all: makes link::#*main:: if needed and opens its window. What the ServerPanel button calls.
 RETURNS:: an Insight.
 
 METHOD:: gui

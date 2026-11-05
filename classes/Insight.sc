@@ -96,7 +96,7 @@ Insight {
 		^this.at(\main) ?? { this.new(\main, 0, 2, server) }
 	}
 
-	// the main out, window and all: what the button in ServerView does
+	// the main out, window and all: what the button in ServerPanel does
 	*open { |server|
 		var ins = this.main(server);
 		ins.gui;

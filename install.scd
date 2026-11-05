@@ -17,7 +17,7 @@
 //
 // Insight depends on nothing. If BusManager happens to be installed as
 // well, an insight can be pointed at a bus by name - Insight(\verb,
-// \reverb) - and follows the name from then on; and if ServerView is
+// \reverb) - and follows the name from then on; and if ServerPanel is
 // installed, its meter section grows a button that opens the insight on
 // the main out. Neither repository needs the other to compile.
 
@@ -71,8 +71,8 @@ if (missing.notEmpty) {
 		"  BusManager is installed too - a bus can be picked by name: Insight(\\verb, \\reverb)"
 			.postln;
 	};
-	if (\ServerView.asClass.notNil) {
-		"  ServerView is installed too - its meters have an i button that opens Insight"
+	if (\ServerPanel.asClass.notNil) {
+		"  ServerPanel is installed too - its meters have an i button that opens Insight"
 			.postln;
 	};
 };
