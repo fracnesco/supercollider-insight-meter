@@ -3,7 +3,7 @@
 	summary: "a sound engineer's window on a bus: spectrum, loudness, true peak, image",
 	version: "0.1.0",
 	author: "Francesco Corvi",
-	url: "https://github.com/fracnesco/sc-insight.git",
+	url: "https://github.com/fracnesco/supercollider-insight-meter.git",
 	license: "GPL-3.0-or-later",
 	copyright: "Copyright (c) 2026 Francesco Corvi",
 	schelp: "HelpSource",

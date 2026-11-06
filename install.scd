@@ -6,7 +6,7 @@
 // rather have it installed and updated for you, do not use this file -
 // install it as a quark instead, from a fresh sclang:
 //
-//   Quarks.install("https://github.com/fracnesco/sc-insight.git");
+//   Quarks.install("https://github.com/fracnesco/supercollider-insight-meter.git");
 //   thisProcess.recompile;
 //
 // One or the other, not both: two copies on the class path is a

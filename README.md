@@ -46,7 +46,7 @@ apart from the symlink in `install.scd`, which Linux shares and Windows does not
 ### As a quark
 
 ```supercollider
-Quarks.install("https://github.com/fracnesco/sc-insight.git");
+Quarks.install("https://github.com/fracnesco/supercollider-insight-meter.git");
 thisProcess.recompile;
 ```
 
@@ -57,12 +57,12 @@ the same thing as `Language -> Recompile Class Library` (ctrl/cmd + shift + L).
 Afterwards:
 
 ```supercollider
-Quarks.update("sc-insight");       // pull the newest version, then recompile
-Quarks.uninstall("sc-insight");    // take it off the class path
+Quarks.update("supercollider-insight-meter");       // pull the newest version, then recompile
+Quarks.uninstall("supercollider-insight-meter");    // take it off the class path
 Quarks.gui;                        // see what is installed
 ```
 
-The quark goes by the name of the repository, `sc-insight`; the class inside it
+The quark goes by the name of the repository, `supercollider-insight-meter`; the class inside it
 is `Insight`.
 
 ### From a clone
@@ -71,7 +71,7 @@ If you would rather have a working copy you can edit, clone it wherever you keep
 things and link it into the extensions folder:
 
 ```sh
-git clone https://github.com/fracnesco/sc-insight.git
+git clone https://github.com/fracnesco/supercollider-insight-meter.git
 ```
 
 There is an `install.scd` in the repository that does the linking for you: open
@@ -285,12 +285,12 @@ is honest about where the energy is, which is what an eye on a mix wants.
 | [HelpSource/Classes/Insight.schelp](HelpSource/Classes/Insight.schelp) | the help file, cmd/ctrl + d on the class name |
 | [examples/insight-demo.scd](examples/insight-demo.scd) | a walkthrough you can evaluate block by block |
 | [install.scd](install.scd) | symlinks the repository into the extensions folder |
-| [sc-insight.quark](sc-insight.quark) | the quark manifest, named after the repository so `Quarks` can find it |
+| [sc-insight.quark](sc-insight.quark) | the quark manifest |
 
 ## Issues
 
 Bug reports and questions are welcome in
-[Issues](https://github.com/fracnesco/sc-insight/issues).
+[Issues](https://github.com/fracnesco/supercollider-insight-meter/issues).
 
 ## License
 
