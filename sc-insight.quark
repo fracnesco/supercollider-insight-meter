@@ -7,5 +7,5 @@
 	license: "GPL-3.0-or-later",
 	copyright: "Copyright (c) 2026 Francesco Corvi",
 	schelp: "HelpSource",
-	dependencies: []
+	dependencies: ["https://github.com/fracnesco/sc-eq.git"]
 )
