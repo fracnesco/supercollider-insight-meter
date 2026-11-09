@@ -86,6 +86,13 @@ InsightLoudness {
 		^this
 	}
 
+	// drop the loudest momentary and short term, and go on integrating
+	resetMaxima {
+		maxMomentary = -inf;
+		maxShortTerm = -inf;
+		^this
+	}
+
 	// how long has been integrated, in seconds: the blocks are 100 ms
 	duration { ^blocks * 0.1 }
 

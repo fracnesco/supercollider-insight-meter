@@ -43,6 +43,9 @@ Insight {
 	classvar <>loudnessRate = 10;			// loudness blocks a second: the spec's 100 ms hop
 	classvar <>pollRate = 15;				// frames a second read back from the server
 	classvar <fftSizes, <sources, <tilts;
+	classvar <targets, userTargets, clipboard;	// loudness targets: [name, LUFS, dBTP]
+	classvar <>presetFile;					// where the targets you save are kept
+	classvar <>tolerance = 1;				// LU either side of the target that counts as on it
 
 	var <name, <server, <id;
 	var <bus;								// index of the bus read; nil while a name is unknown
@@ -75,6 +78,18 @@ Insight {
 		fftSizes = [1024, 2048, 4096, 8192, 16384];
 		sources = [\sum, \left, \right, \mid, \side];
 		tilts = [0, 1.5, 3, 4.5, 6];
+		// what the measurement is held against: the integrated loudness a
+		// delivery asks for, and the true peak it must stay under
+		targets = [
+			["streaming -14", -14, -1],
+			["apple music -16", -16, -1],
+			["mixdown -18", -18, -3],
+			["ebu r128 -23", -23, -1],
+			["atsc a/85 -24", -24, -2],
+			["film -27", -27, -2],
+			["loud master -9", -9, -0.3]
+		];
+		presetFile = Platform.userAppSupportDir +/+ "insight-targets.scd";
 	}
 
 	// ------------------------------------------------------------ registry
@@ -411,6 +426,121 @@ Insight {
 	}
 
 	prGuiClosed { guiObj = nil }
+
+	// what the shared window (FxDeviceGUI, sc EQ) asks of the thing it shows
+	*panelClass { ^InsightPanel }
+	*title { ^"insight" }
+	*windowSize { ^Point(1000, 600) }
+	// an analyser adds nothing to the sound, so it has no colour of its own:
+	// signal blue for what it measures, outlines for the targets
+	*identityColour { ^nil }
+	label { ^name.asString }
+	// the power button: the analysis runs or costs nothing
+	enabled { ^running }
+	enabled_ { |flag| this.running_(flag == true) }
+
+	// Drop what is held - the highest sample and true peak, the over count, the
+	// loudest momentary and short term - and leave the loudness integrating:
+	// what clicking the meters does.
+	resetPeaks {
+		loudness.resetMaxima;
+		maxPeaks = 0.0 ! channels;
+		maxTruePeaks = 0.0 ! channels;
+		overs = 0;
+		overNow = false;
+		this.changed(\reset);
+		^this
+	}
+
+	// ------------------------------------------------------------ targets
+
+	// A preset of an insight is a loudness target: the integrated loudness a
+	// delivery asks for and the true peak it must stay under. The ready made
+	// ones, then the ones saved, in Insight.presetFile.
+	*presetNames { ^(targets ++ this.prUserTargets).collect { |t| t[0].asSymbol } }
+
+	*prUserTargets {
+		userTargets ?? {
+			userTargets = [];
+			if (File.exists(presetFile)) {
+				try {
+					userTargets = presetFile.load.select { |t| t.isArray and: { t.size >= 3 } }
+						.collect { |t| [t[0].asString, t[1].asFloat, t[2].asFloat] };
+				} { ("Insight: could not read " ++ presetFile).warn };
+			};
+		};
+		^userTargets
+	}
+
+	*prTarget { |name|
+		var key = name.asString;
+		^(targets ++ this.prUserTargets).detect { |t| t[0] == key }
+	}
+
+	*isUserPreset { |name| ^this.prUserTargets.any { |t| t[0] == name.asString } }
+
+	*removePreset { |name|
+		if (this.isUserPreset(name).not) { ^this };
+		userTargets = this.prUserTargets.reject { |t| t[0] == name.asString };
+		this.prWriteTargets;
+		this.changed(\presets);
+	}
+
+	*prWriteTargets {
+		try {
+			File.use(presetFile, "w", { |f| f.write(this.prUserTargets.asCompileString) });
+		} { ("Insight: could not write " ++ presetFile).warn };
+	}
+
+	// the target these settings are, or nil once target or ceiling has moved
+	presetName {
+		^(targets ++ this.class.prUserTargets)
+			.detect { |t| ((t[1] - target).abs < 0.01) and: { (t[2] - ceiling).abs < 0.01 } }
+			!? { |t| t[0].asSymbol }
+	}
+
+	preset { ^this.presetName }
+
+	preset_ { |name|
+		var t = this.class.prTarget(name);
+		if (t.isNil) { ("Insight: no target called %".format(name)).warn; ^this };
+		this.target = t[1];
+		this.ceiling = t[2];
+	}
+
+	// the target and ceiling now, under a name; a ready made name is not overwritten
+	saveAsPreset { |name|
+		var key = name.asString.stripWhiteSpace;
+		if (key.isEmpty or: { targets.any { |t| t[0] == key } }) { ^nil };
+		userTargets = this.class.prUserTargets.reject { |t| t[0] == key } ++ [[key, target, ceiling]];
+		this.class.prWriteTargets;
+		this.class.changed(\presets);
+		this.changed(\settings);
+		^key.asSymbol
+	}
+
+	// what an insight holds and a copy carries: the drawing and the target
+	*settingKeys { ^#[\fftSize, \source, \imagerFrames, \tilt, \smoothing, \hold, \spectrumFloor, \target, \ceiling] }
+
+	settings {
+		var ev = ();
+		this.class.settingKeys.do { |k| ev[k] = this.perform(k) };
+		^ev
+	}
+
+	settings_ { |ev|
+		this.class.settingKeys.do { |k| ev[k] !? { |v| this.perform(k.asSetter, v) } };
+	}
+
+	copySettings { clipboard = this.settings; this.class.changed(\clipboard) }
+	pasteSettings { clipboard !? { this.settings_(clipboard) } }
+	*hasClipboard { ^clipboard.notNil }
+
+	// back to how a new insight starts
+	restoreDefaults {
+		this.settings_((fftSize: 4096, source: \sum, imagerFrames: 1024, tilt: 3, smoothing: 0,
+			hold: true, spectrumFloor: -96, target: -14, ceiling: -1));
+	}
 
 	// ------------------------------------------------------------- private
 
