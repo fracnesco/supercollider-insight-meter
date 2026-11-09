@@ -1,382 +1,458 @@
 // =====================================================================
-// InsightViews - the four panels of the window, each a UserView
+// InsightViews - the panes of the window, each a UserView (sc-fx-ui)
 //
-//   InsightSpectrumView   log frequency, three traces, a readout under the mouse
-//   InsightMeterView      a bar per channel and two for loudness, with the numbers
+//   InsightSpectrumView   log frequency: now, a moment ago, the loudest held
+//   InsightMeterView      a bar per channel (dBFS) and two for loudness (LUFS)
 //   InsightImagerView     the goniometer, correlation and balance
-//   InsightHistoryView    short term loudness over the last minute
+//   InsightHistoryView    short term loudness over the last minute or five
+//   InsightReadingsView   the numbers: integrated big, the rest under it
 //
 //   v = InsightSpectrumView(insight);
 //   HLayout(..., v.view);
-//   v.refresh;                       // from the window's updater
+//   v.refresh;                       // from the panel's updater
 //
-// Each one reads the insight and draws what it finds. None of them
-// schedules anything: the window's updater calls refresh, and a view
-// that has nothing new to show skips the redraw.
+// Each one reads the insight and draws what it finds, in FxPalette's
+// colours: signal blue for levels and spectra, the same blue paler for
+// loudness, white for what is held, outlines for the targets, red only
+// for an over. None of them schedules anything: the panel's updater calls
+// refresh. Each says what is under the pointer in the hint bar (`hints`),
+// and the target, the ceiling and the spectrum's range are dragged where
+// they are drawn - up and down, shift for fine, the wheel in steps, a
+// double click back to the default.
 // =====================================================================
 
 InsightSpectrumView {
-	var <insight, <view;
-	var hover, drawnFrame = -1, drawnHover, <>hints;
-	var font, colFill1, colFill2, colGridFaint, colPeakLine;
-	var padL = 34, padR = 10, padT = 10, padB = 20;
+	var <insight, <view, <>hints;
+	var hover, drawnFrame = -1, drawnHover, drawnRunning;
+	var down = false, moved = false, downY = 0, downFloor = -96;
+	var padL = 30, padR = 8, padT = 6, padB = 16;
 
 	*new { |insight| ^super.new.init(insight) }
 
 	init { |argInsight|
 		insight = argInsight;
-		font = Font(Font.defaultSansFace, 9);
-		colFill1 = InsightGUI.colMeter.copy.alpha_(0.5);
-		colFill2 = InsightGUI.colMeter.copy.alpha_(0.03);
-		colGridFaint = InsightGUI.colGrid.copy.alpha_(0.35);
-		colPeakLine = InsightGUI.colPeak.copy.alpha_(0.6);
-		view = UserView().minHeight_(220).minWidth_(400);
-		view.background = InsightGUI.colOff;
+		view = UserView().minHeight_(160).minWidth_(360);
 		view.drawFunc = { |v| this.prDraw(v) };
 		view.acceptsMouseOver = true;
-		view.mouseOverAction = { |v, x, y|
-			hover = x @ y;
-			hints !? { hints.string_(this.hintAt(x, y)) };
-		};
-		view.mouseLeaveAction = { hover = nil };
-		view.mouseDownAction = { insight.spectrum !? (_.resetMaxima) };
-		view.mouseWheelAction = { |v, x, y, mods, xs, ys|
-			if (ys != 0) { insight.spectrumFloor_(insight.spectrumFloor + (ys.sign * 6)) };
-		};
-		view.toolTip = "the spectrum: the loudest bin in each of 128 bands, log frequency."
-			"\nblue is now, white a moment ago, orange the loudest since reset."
-			"\nclick to clear the held trace, scroll to change the range.";
+		view.mouseOverAction = { |v, x, y| this.prHover(x, y) };
+		view.mouseLeaveAction = { hover = nil; view.refresh };
+		view.mouseDownAction = { |v, x, y, mod, button, count| this.prMouseDown(x, y, mod, count) };
+		view.mouseMoveAction = { |v, x, y, mod| this.prMouseMove(x, y, mod) };
+		view.mouseUpAction = { |v, x, y| this.prMouseUp(x, y) };
+		view.mouseWheelAction = { |v, x, y, mod, xd, yd| this.prWheel(mod, yd) };
 		^this
 	}
 
 	refresh { |frozen = false|
 		var frame = insight.spectrum !? (_.frames) ? -1;
-		if (hover != drawnHover or: { frozen.not and: { frame != drawnFrame } }) {
+		if (hover != drawnHover or: { insight.running != drawnRunning }
+			or: { frozen.not and: { frame != drawnFrame } }) {
 			view.refresh;
 		};
 	}
 
-	// what the spectrum measures, and how to read its three traces
-	hintAt { |x, y|
-		^"Spectrum — the loudest FFT bin in each of 128 log-spaced frequency bands. "
-		"Blue is now, white a moment ago, orange the loudest reached in each band since reset. "
-		"Hover shows the frequency, nearest note and level; click clears the held trace, scroll moves the floor."
+	// ------------------------------------------------------------ gestures
+
+	// up and down moves the floor of the range; a click that does not move
+	// clears the held trace
+	prMouseDown { |x, y, mod, count|
+		if (count == 2) { insight.spectrumFloor = -96; down = false; this.prSay(x, y); ^true };
+		down = true;
+		moved = false;
+		downY = y;
+		downFloor = insight.spectrumFloor;
+		^true
 	}
 
+	prMouseMove { |x, y, mod|
+		var fine = mod.isShift;
+		if (down.not) { ^true };
+		if ((y - downY).abs > 2) { moved = true };
+		if (moved) {
+			insight.spectrumFloor = (downFloor - ((y - downY) * if (fine) { 0.03 } { 0.3 })).round(1);
+			hover = x @ y;
+			this.prSay(x, y);
+			view.refresh;
+		};
+		^true
+	}
+
+	prMouseUp { |x, y|
+		if (down and: { moved.not }) { insight.spectrum !? (_.resetMaxima); view.refresh };
+		down = false;
+		^true
+	}
+
+	prWheel { |mod, yd|
+		if (yd != 0) {
+			insight.spectrumFloor = (insight.spectrumFloor - (yd.sign * if (mod.isShift) { 1 } { 6 }));
+			view.refresh;
+		};
+		^true
+	}
+
+	prHover { |x, y|
+		hover = x @ y;
+		this.prSay(x, y);
+	}
+
+	prSay { |x, y| hints !? { hints.string_(this.hintAt(x, y)) } }
+
+	// ------------------------------------------------------------- reading
+
+	prGeometry {
+		var w = view.bounds.width, h = view.bounds.height;
+		^(l: padL, t: padT, gw: w - padL - padR, gh: h - padT - padB, w: w, h: h)
+	}
+
+	freqAt { |x|
+		var g = this.prGeometry;
+		^InsightSpectrum.minFreq * ((InsightSpectrum.maxFreq / InsightSpectrum.minFreq) ** ((x - g[\l]) / g[\gw]).clip(0, 1))
+	}
+
+	// what is under the pointer, and what the gestures do
+	hintAt { |x, y|
+		var f = this.freqAt(x), sp = insight.spectrum, txt;
+		txt = "spectrum  % · % · %".format(this.class.freqText(f), FxPalette.noteName(f), FxPalette.regionName(f));
+		sp !? {
+			txt = txt ++ " · " ++ InsightGUI.fmt(this.prTilted(sp.levelAt(f), f)) ++ " dB";
+			if (sp.hold) { txt = txt ++ " · held " ++ InsightGUI.fmt(this.prTilted(sp.maximumAt(f), f)) };
+		};
+		^txt ++ "   -   drag: the range (floor %), click: clear the held trace".format(insight.spectrumFloor.asInteger)
+	}
+
+	// the tilt is a slope on what was measured: a band at the floor stays there
+	prTilted { |db, f| ^if (db <= (insight.spectrumFloor + 0.01)) { db } { db + (insight.tilt * log2(f / 1000)) } }
+
+	*freqText { |f| ^if (f >= 1000) { FxPalette.sig3(f / 1000) ++ " kHz" } { f.round(1).asInteger.asString ++ " Hz" } }
+
+	*freqLabel { |f| ^if (f >= 1000) { (f / 1000).asInteger.asString ++ "k" } { f.asInteger.asString } }
+
+	// ---------------------------------------------------------------- draw
+
 	prDraw { |v|
-		var w = v.bounds.width, h = v.bounds.height;
+		var g = this.prGeometry, l = g[\l], t = g[\t], gw = g[\gw], gh = g[\gh], w = g[\w];
 		var sp = insight.spectrum;
-		var gw = w - padL - padR, gh = h - padT - padB;
 		var lo = insight.spectrumFloor, hi = 6;
-		var tilt = insight.tilt;
 		var minF = InsightSpectrum.minFreq, maxF = InsightSpectrum.maxFreq;
 		var logSpan = log(maxF / minF);
-		var xOf = { |f| padL + (gw * (log(f / minF) / logSpan)) };
-		var yOf = { |db| padT + (gh * (1 - ((db.clip(lo, hi) - lo) / (hi - lo)))) };
-		var tilted = { |db, f| db + (tilt * log2(f / 1000)) };
+		var xOf = { |f| l + (gw * (log(f / minF) / logSpan)) };
+		var yOf = { |db| t + (gh * (1 - ((db.clip(lo, hi) - lo) / (hi - lo)))) };
 		var gridFreqs = [20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700,
 			800, 900, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 20000];
 		var labelFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-		var db, y, x, pts, f, lv, mx, txt, tw;
+		var live = insight.running, a = if (live) { 1 } { 0.45 };
+		var db, y, x, pts, f, txt, tw, step;
 
 		drawnFrame = sp !? (_.frames) ? -1;
 		drawnHover = hover;
+		drawnRunning = live;
 		Pen.smoothing = true;
 		Pen.width = 1;
 
-		// the grid: frequencies, then dB every twelve
+		// the grid: frequencies, then dB, labelled every twelve
 		gridFreqs.do { |gf|
 			x = xOf.(gf).round + 0.5;
-			Pen.strokeColor = if (labelFreqs.includes(gf)) { InsightGUI.colGrid } { colGridFaint };
-			Pen.line(x @ padT, x @ (padT + gh));
+			Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, if (labelFreqs.includes(gf)) { 0.8 } { 0.3 });
+			Pen.line(x @ t, x @ (t + gh));
 			Pen.stroke;
 		};
+		step = if ((hi - lo) > 72) { 12 } { 6 };
 		db = 0;
 		while { db >= lo } {
 			y = yOf.(db).round + 0.5;
-			Pen.strokeColor = if (db == 0) { InsightGUI.colGrid } { colGridFaint };
-			Pen.line(padL @ y, (padL + gw) @ y);
+			Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, if (db == 0) { 0.9 } { 0.4 });
+			Pen.line(l @ y, (l + gw) @ y);
 			Pen.stroke;
-			Pen.stringRightJustIn(db.asString, Rect(0, y - 7, padL - 5, 14), font, InsightGUI.colDim);
-			db = db - 12;
+			if ((db % 12) == 0) {
+				Pen.stringRightJustIn(db.asString, Rect(0, y - 6, l - 4, 12), FxPalette.smallFont, FxPalette.dim);
+			};
+			db = db - step;
 		};
 		labelFreqs.do { |lf|
 			x = xOf.(lf);
-			Pen.stringCenteredIn(this.prFreqLabel(lf), Rect(x - 20, padT + gh + 3, 40, 14),
-				font, InsightGUI.colDim);
+			case
+			{ lf == labelFreqs.first } { Pen.stringLeftJustIn(this.class.freqLabel(lf), Rect(x + 2, t + gh + 2, 40, 12), FxPalette.smallFont, FxPalette.dim) }
+			{ lf == labelFreqs.last } { Pen.stringRightJustIn(this.class.freqLabel(lf), Rect(x - 42, t + gh + 2, 40, 12), FxPalette.smallFont, FxPalette.dim) }
+			{ true } { Pen.stringCenteredIn(this.class.freqLabel(lf), Rect(x - 20, t + gh + 2, 40, 12), FxPalette.smallFont, FxPalette.dim) };
 		};
 
-		if (sp.notNil) {
-			// now: a filled area under the trace, and the trace itself
-			pts = sp.freqs.collect { |bf, i| xOf.(bf) @ yOf.(tilted.(sp.levels[i], bf)) };
-			Pen.moveTo(pts[0].x @ (padT + gh));
+		if (sp.notNil and: { sp.frames > 0 } and: { live }) {
+			// now: an area under the trace, and the trace
+			pts = sp.freqs.collect { |bf, i| xOf.(bf) @ yOf.(this.prTilted(sp.levels[i], bf)) };
+			Pen.moveTo(pts[0].x @ (t + gh));
 			pts.do { |p| Pen.lineTo(p) };
-			Pen.lineTo(pts.last.x @ (padT + gh));
-			Pen.fillAxialGradient(0 @ padT, 0 @ (padT + gh), colFill1, colFill2);
-			Pen.strokeColor = InsightGUI.colMeter;
+			Pen.lineTo(pts.last.x @ (t + gh));
+			Pen.fillAxialGradient(0 @ t, 0 @ (t + gh),
+				FxPalette.fade(FxPalette.wave, 0.38 * a), FxPalette.fade(FxPalette.wave, 0.03 * a));
+			Pen.strokeColor = FxPalette.fade(FxPalette.wave, a);
 			Pen.width = 1.5;
 			Pen.moveTo(pts[0]);
 			pts.do { |p| Pen.lineTo(p) };
 			Pen.stroke;
 			// a moment ago
-			Pen.strokeColor = colPeakLine;
 			Pen.width = 1;
+			Pen.strokeColor = FxPalette.fade(FxPalette.peak, 0.42 * a);
 			sp.freqs.do { |bf, i|
-				var p = xOf.(bf) @ yOf.(tilted.(sp.peaks[i], bf));
+				var p = xOf.(bf) @ yOf.(this.prTilted(sp.peaks[i], bf));
 				if (i == 0) { Pen.moveTo(p) } { Pen.lineTo(p) };
 			};
 			Pen.stroke;
-			// the loudest since reset
+			// the loudest since reset, dashed
 			if (sp.hold) {
-				Pen.strokeColor = InsightGUI.colAccent;
-				sp.freqs.do { |bf, i|
-					var p = xOf.(bf) @ yOf.(tilted.(sp.maxima[i], bf));
-					if (i == 0) { Pen.moveTo(p) } { Pen.lineTo(p) };
+				Pen.use {
+					Pen.lineDash = FloatArray[3, 3];
+					Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.7 * a);
+					sp.freqs.do { |bf, i|
+						var p = xOf.(bf) @ yOf.(this.prTilted(sp.maxima[i], bf));
+						if (i == 0) { Pen.moveTo(p) } { Pen.lineTo(p) };
+					};
+					Pen.stroke;
 				};
-				Pen.stroke;
 			};
-		};
-
-		// what is under the mouse: frequency, note, level, held maximum
-		if (hover.notNil and: { hover.x >= padL } and: { hover.x <= (padL + gw) }) {
-			f = minF * ((maxF / minF) ** ((hover.x - padL) / gw));
-			txt = this.prFreq(f) ++ " · " ++ this.prNote(f);
-			sp !? {
-				lv = tilted.(sp.levelAt(f), f);
-				mx = tilted.(sp.maximumAt(f), f);
-				txt = txt ++ " · " ++ InsightGUI.fmt(lv) ++ " dB";
-				if (sp.hold) { txt = txt ++ " · max " ++ InsightGUI.fmt(mx) };
-			};
-			x = hover.x.round + 0.5;
-			Pen.strokeColor = InsightGUI.colText.copy.alpha_(0.5);
-			Pen.line(x @ padT, x @ (padT + gh));
-			Pen.stroke;
-			tw = (txt.size * 6) + 12;
-			x = (hover.x + 10).min(w - tw - 4);
-			Pen.fillColor = InsightGUI.colBg.copy.alpha_(0.85);
-			Pen.fillRect(Rect(x, padT + 4, tw, 16));
-			Pen.stringLeftJustIn(txt, Rect(x + 6, padT + 4, tw, 16), font, InsightGUI.colText);
-		};
-	}
-
-	prFreqLabel { |f|
-		^if (f >= 1000) { (f / 1000).asInteger.asString ++ "k" } { f.asInteger.asString }
-	}
-
-	prFreq { |f|
-		^if (f >= 1000) {
-			(f / 1000).round(0.01).asString ++ " kHz"
 		} {
-			f.round(1).asInteger.asString ++ " Hz"
-		}
+			// at rest: what was held, and why nothing moves
+			if (sp.notNil and: { sp.hold }) {
+				Pen.use {
+					Pen.lineDash = FloatArray[3, 3];
+					Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.5);
+					sp.freqs.do { |bf, i|
+						var p = xOf.(bf) @ yOf.(this.prTilted(sp.maxima[i], bf));
+						if (i == 0) { Pen.moveTo(p) } { Pen.lineTo(p) };
+					};
+					Pen.stroke;
+				};
+			};
+			txt = this.prRestText;
+			tw = txt.bounds(FxPalette.font).width + 16;
+			Pen.fillColor = FxPalette.fade(FxPalette.waveBg, 0.9);
+			Pen.fillRect(Rect(l + ((gw - tw) / 2), t + (gh * 0.7) - 9, tw, 18));
+			Pen.stringCenteredIn(txt, Rect(l, t + (gh * 0.7) - 9, gw, 18), FxPalette.font, FxPalette.dim);
+		};
+
+		// what is under the pointer: frequency, note, level
+		if (hover.notNil and: { hover.x >= l } and: { hover.x <= (l + gw) }) {
+			f = this.freqAt(hover.x);
+			txt = this.class.freqText(f) ++ " · " ++ FxPalette.noteName(f);
+			sp !? { if (sp.frames > 0) { txt = txt ++ " · " ++ InsightGUI.fmt(this.prTilted(sp.levelAt(f), f)) ++ " dB" } };
+			x = hover.x.round + 0.5;
+			Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.45);
+			Pen.line(x @ t, x @ (t + gh));
+			Pen.stroke;
+			tw = txt.bounds(FxPalette.smallFont).width + 12;
+			x = (hover.x + 8).min(w - tw - 4);
+			Pen.fillColor = FxPalette.fade(FxPalette.bg, 0.9);
+			Pen.addRoundedRect(Rect(x, t + 2, tw, 15), 3, 3);
+			Pen.fill;
+			Pen.stringCenteredIn(txt, Rect(x, t + 2, tw, 15), FxPalette.smallFont, FxPalette.text);
+		};
 	}
 
-	prNote { |f|
-		var names = #["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-		var midi = f.cpsmidi;
-		var n = midi.round.asInteger;
-		var cents = ((midi - n) * 100).round.asInteger;
-		^names[n % 12] ++ ((n div: 12) - 1) ++ (if (cents >= 0) { " +" } { " " }) ++ cents ++ "c"
+	prRestText {
+		^case
+		{ insight.running.not } { "stopped - the power button runs the analysis" }
+		{ insight.server.serverRunning.not } { "waiting for the server" }
+		{ insight.isResolved.not } { "waiting for the bus" }
+		{ true } { "listening" }
 	}
 }
 
 
 // ---------------------------------------------------------------------
-// a bar per channel - rms body, true peak line, the highest held - two
-// bars for momentary and short term loudness, and the numbers under them
+// a bar per channel - rms solid, true peak pale above it, the highest held
+// as a white line - and two bars for momentary and short term loudness,
+// the target across them as an outlined band. The held values sit above
+// the bars as numbers; a click drops them. The ceiling and the target are
+// dragged where they are drawn.
 // ---------------------------------------------------------------------
 
 InsightMeterView {
 	var <insight, <view, <>hints;
 	var <>floorDb = -60, <>topDb = 3;
-	var font, monoFont, colTrack, colGridFaint, colClipFaint, colAccentFaint;
-	var geoBarsBottom, geoRy, geoLoudX;			// set in prDraw, read by hintAt
+	var grab, moved = false, downY = 0, downValue = 0;
+	var geo;							// set in prDraw, read by the hints and gestures
 
 	*new { |insight| ^super.new.init(insight) }
 
 	init { |argInsight|
 		insight = argInsight;
-		font = Font(Font.defaultSansFace, 9);
-		monoFont = Font(Font.defaultMonoFace, 11);
-		colTrack = InsightGUI.colBg;
-		colGridFaint = InsightGUI.colGrid.copy.alpha_(0.35);
-		colClipFaint = InsightGUI.colClip.copy.alpha_(0.7);
-		colAccentFaint = InsightGUI.colAccent.copy.alpha_(0.7);
-		view = UserView().fixedWidth_(250).minHeight_(320);
-		view.background = InsightGUI.colOff;
+		view = UserView().minWidth_(200).minHeight_(180);
 		view.drawFunc = { |v| this.prDraw(v) };
 		view.acceptsMouseOver = true;
 		view.mouseOverAction = { |v, x, y| hints !? { hints.string_(this.hintAt(x, y)) } };
-		view.toolTip = "levels: the bar is rms, the white line true peak, the orange mark"
-			"\nthe highest true peak since reset - red once it is past the ceiling."
-			"\nM and S are momentary and short term loudness, with the target across them."
-			"\nthe numbers hold their highest values until reset.";
+		view.mouseDownAction = { |v, x, y, mod, button, count| this.prMouseDown(x, y, mod, count) };
+		view.mouseMoveAction = { |v, x, y, mod| this.prMouseMove(x, y, mod) };
+		view.mouseUpAction = { this.prMouseUp };
+		view.mouseWheelAction = { |v, x, y, mod, xd, yd| this.prWheel(x, mod, yd) };
 		^this
 	}
 
 	refresh { view.refresh }
 
-	// each reading, by where the mouse is: the bars up top, then one row
-	// per number - so hovering "I" or "TP" says exactly what it measures
-	hintAt { |x, y|
-		var row;
-		if (geoBarsBottom.isNil) {
-			^"Levels and loudness — hover a bar or a number for what it measures."
+	// which side of the meter a point is on: \ceiling over the channels, \target over the loudness
+	sideAt { |x| ^if (geo.notNil and: { x >= (geo[\loudX] - 8) }) { \target } { \ceiling } }
+
+	yOf { |db| ^geo[\top] + (geo[\barsH] * (1 - ((db.clip(floorDb, topDb) - floorDb) / (topDb - floorDb)))) }
+
+	// ------------------------------------------------------------ gestures
+
+	prMouseDown { |x, y, mod, count|
+		grab = this.sideAt(x);
+		if (count == 2) {
+			if (grab == \target) { insight.target = -14 } { insight.ceiling = -1 };
+			grab = nil;
+			hints !? { hints.string_(this.hintAt(x, y)) };
+			^true
 		};
-		if (y < geoBarsBottom) {
-			^if (geoLoudX.notNil and: { x >= (geoLoudX - 6) }) {
-				"Loudness bars — M (momentary, last 400 ms) and S (short-term, last 3 s), "
-				"K-weighted per BS.1770, in LUFS. The orange mark is the loudest since reset, "
-				"the dashed line your target."
-			} {
-				"Level meters, one per channel — the filled bar is RMS (~300 ms), the white line "
-				"the true peak of this interval, the orange mark the highest true peak since reset. "
-				"Red once it is past the ceiling."
-			};
-		};
-		row = ((y - geoRy + 9) / 18).floor.asInteger.clip(0, 5);
-		^[
-			"M · Momentary loudness (LUFS) — the mean loudness of the last 400 ms, K-weighted "
-			"(BS.1770). Reads instantaneous programme level. 'max' is the loudest 400 ms since reset.",
-
-			"S · Short-term loudness (LUFS) — the last 3 seconds, K-weighted. The window many "
-			"delivery and normalisation specs watch. 'max' is the loudest 3 s since reset.",
-
-			"I · Integrated loudness (LUFS) — every 100 ms block since reset, gated (blocks under "
-			"-70 LUFS dropped, then blocks more than 10 LU below the running mean dropped) and "
-			"averaged. The one programme-loudness figure: aim -14 for streaming, -23 for EBU R128 "
-			"broadcast. LRA beside it is the loudness range in LU (10th-95th percentile of short-term).",
-
-			"TP · True peak (dBTP) — the sample peak reconstructed at 4x oversampling, so "
-			"inter-sample peaks a normal peak meter misses are caught. Keep it under the ceiling "
-			"(-1 dBTP) to survive MP3/AAC encoding. The figure is the max held; 'now' is live.",
-
-			"peak · Sample peak (dBFS) — the highest actual sample value since reset. "
-			"'overs' counts how many times the true peak crossed the ceiling.",
-
-			"corr · Interchannel correlation — +1 the channels are identical (mono-safe), 0 "
-			"unrelated, -1 inverted (cancels when summed to mono). width — 0 mono, 1 fully spread, "
-			"above 1 out of phase."
-		][row];
+		moved = false;
+		downY = y;
+		downValue = if (grab == \target) { insight.target } { insight.ceiling };
+		^true
 	}
+
+	prMouseMove { |x, y, mod|
+		var perPx, v;
+		if (grab.isNil or: { geo.isNil }) { ^true };
+		if ((y - downY).abs > 2) { moved = true };
+		if (moved) {
+			perPx = (topDb - floorDb) / geo[\barsH].max(1) * if (mod.isShift) { 0.1 } { 1 };
+			v = downValue - ((y - downY) * perPx);
+			if (grab == \target) { insight.target = v.round(if (mod.isShift) { 0.1 } { 1 }) } {
+				insight.ceiling = v.round(0.1)
+			};
+			hints !? { hints.string_(this.hintAt(x, y)) };
+			view.refresh;
+		};
+		^true
+	}
+
+	prMouseUp {
+		if (grab.notNil and: { moved.not }) { insight.resetPeaks; view.refresh };
+		grab = nil;
+		^true
+	}
+
+	prWheel { |x, mod, yd|
+		var fine = mod.isShift;
+		if (yd == 0) { ^true };
+		if (this.sideAt(x) == \target) {
+			insight.target = (insight.target + (yd.sign * if (fine) { 0.1 } { 1 })).round(0.1)
+		} {
+			insight.ceiling = (insight.ceiling + (yd.sign * if (fine) { 0.1 } { 0.5 })).round(0.1)
+		};
+		view.refresh;
+		^true
+	}
+
+	// ------------------------------------------------------------- reading
+
+	hintAt { |x, y|
+		^if (this.sideAt(x) == \target) {
+			"loudness  M % · S % LUFS, target %   -   the band is the target ±% LU; drag: the target, click: drop held"
+			.format(InsightGUI.fmt(insight.loudness.momentary), InsightGUI.fmt(insight.loudness.shortTerm),
+				InsightGUI.fmt(insight.target), Insight.tolerance)
+		} {
+			"levels  held true peak % dBTP, ceiling %   -   solid rms, pale true peak; drag: the ceiling, click: drop held"
+			.format(InsightGUI.fmt(insight.maxTruePeakDb), InsightGUI.fmt(insight.ceiling))
+		}
+	}
+
+	// ---------------------------------------------------------------- draw
 
 	prDraw { |v|
 		var w = v.bounds.width, h = v.bounds.height;
-		var n = insight.channels;
-		var loud = insight.loudness;
-		var top = 10, bottom = 8, readH = 118, labelH = 16;
-		var barsTop = top, barsH = h - top - bottom - readH - labelH;
-		var scaleW = 26, gap = 4, lufsW = 16;
-		var x0 = scaleW + 6;
-		var right = w - 8;
-		var loudX = right - (2 * lufsW) - gap;
-		var levelRight = loudX - 16;
-		var barW = (((levelRight - x0) - ((n - 1) * gap)) / n).clip(3, 26);
-		var yOf = { |db| barsTop + (barsH * (1 - ((db.clip(floorDb, topDb) - floorDb) / (topDb - floorDb)))) };
-		var y, ry, over, mxDb;
+		var n = insight.channels, loud = insight.loudness, live = insight.running;
+		var top = 18, bottom = 16, scaleW = 24, gap = 4, x0 = scaleW + 4;
+		var barsH = h - top - bottom;
+		// every bar one width, the room left over between the two groups
+		var barW = ((w - x0 - 4 - 24 - (n * gap)) / (n + 2)).clip(3, 44);
+		var levelRight = x0 + (n * barW) + ((n - 1) * gap);
+		var loudW = barW.max(12);
+		var loudX = w - 4 - (2 * loudW) - gap;
+		var a = if (live) { 1 } { 0.5 };
+		var y, band, zero, held;
 
-		// remembered for hintAt: the bottom of the bar area and where the numbers start
-		geoBarsBottom = barsTop + barsH;
-		geoLoudX = loudX;
-
+		geo = (top: top, barsH: barsH, loudX: loudX, levelRight: levelRight);
 		Pen.smoothing = true;
 		Pen.width = 1;
 
-		// the scale, shared: dBFS for the levels, LUFS for the loudness
-		[3, 0, -6, -12, -18, -24, -30, -36, -42, -48, -54, -60].do { |db|
-			y = yOf.(db).round + 0.5;
-			Pen.strokeColor = if (db == 0) { InsightGUI.colGrid } { colGridFaint };
-			Pen.line((x0 - 3) @ y, right @ y);
+		// the scale: dBFS for the levels and LUFS for the loudness, on one ruler
+		[0, -6, -12, -18, -24, -30, -36, -42, -48, -54, -60].do { |db|
+			y = this.yOf(db).round + 0.5;
+			Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, if (db == 0) { 0.9 } { 0.35 });
+			Pen.line((x0 - 3) @ y, (w - 4) @ y);
 			Pen.stroke;
-			if ([0, -12, -24, -36, -48, -60].includes(db)) {
-				Pen.stringRightJustIn(db.asString, Rect(0, y - 7, scaleW, 14), font, InsightGUI.colDim);
+			if ([0, -6, -12, -24, -48].includes(db)) {
+				Pen.stringRightJustIn(db.asString, Rect(0, y - 6, scaleW - 2, 12), FxPalette.smallFont, FxPalette.dim);
 			};
 		};
+		zero = this.yOf(0);
 
 		// one bar per channel
 		n.do { |i|
 			var x = x0 + (i * (barW + gap));
 			var r = insight.rms[i] ? 0, p = insight.truePeaks[i] ? 0, mx = insight.maxTruePeaks[i] ? 0;
-			var rDb = r.ampdb, pDb = p.ampdb;
-			var overNow = pDb > insight.ceiling;
-			mxDb = mx.ampdb;
-			over = mxDb > insight.ceiling;
-			Pen.fillColor = colTrack;
-			Pen.fillRect(Rect(x, barsTop, barW, barsH));
-			Pen.fillColor = if (overNow) { InsightGUI.colClip } { InsightGUI.colMeter };
-			y = yOf.(rDb);
-			Pen.fillRect(Rect(x, y, barW, barsTop + barsH - y));
-			Pen.fillColor = if (overNow) { InsightGUI.colClip } { InsightGUI.colPeak };
-			Pen.fillRect(Rect(x, yOf.(pDb) - 1, barW, 2));
-			if (mx > 0) {
-				Pen.fillColor = if (over) { InsightGUI.colClip } { InsightGUI.colAccent };
-				Pen.fillRect(Rect(x, yOf.(mxDb) - 1, barW, 2));
+			var rY = this.yOf(r.max(1e-6).ampdb), pY = this.yOf(p.max(1e-6).ampdb), mxDb = mx.max(1e-6).ampdb;
+			var over = mxDb > insight.ceiling;
+			Pen.fillColor = FxPalette.card;
+			Pen.fillRect(Rect(x, top, barW, barsH));
+			Pen.fillColor = FxPalette.fade(FxPalette.wave, 0.35 * a);
+			Pen.fillRect(Rect(x, pY, barW, (top + barsH - pY).max(0)));
+			Pen.fillColor = FxPalette.fade(FxPalette.wave, a);
+			Pen.fillRect(Rect(x, rY, barW, (top + barsH - rY).max(0)));
+			if (pY < zero) {
+				Pen.fillColor = FxPalette.clip;
+				Pen.fillRect(Rect(x, pY, barW, zero - pY));
 			};
-			Pen.stringCenteredIn(this.prChannelLabel(i, n), Rect(x - 4, barsTop + barsH + 1, barW + 8, 14),
-				font, InsightGUI.colDim);
+			if (mx > 1e-5) {
+				Pen.fillColor = if (over) { FxPalette.clip } { FxPalette.peak };
+				Pen.fillRect(Rect(x, this.yOf(mxDb) - 1, barW, 2));
+			};
+			// the held true peak as a number, the over light under it
+			Pen.stringCenteredIn(if (mx < 1e-3) { "-inf" } { mxDb.round(1).asInteger.asString },
+				Rect(x - 6, 0, barW + 12, 12), FxPalette.smallFont, if (over) { FxPalette.clip } { FxPalette.text });
+			Pen.fillColor = if (over) { FxPalette.clip } { FxPalette.control };
+			Pen.fillRect(Rect(x, 13, barW, 3));
+			Pen.stringCenteredIn(this.prChannelLabel(i, n), Rect(x - 6, top + barsH + 2, barW + 12, 12),
+				FxPalette.smallFont, FxPalette.dim);
 		};
 
-		// the ceiling, across the level bars
+		// the ceiling, dashed across the channels
 		Pen.use {
 			Pen.lineDash = FloatArray[3, 3];
-			y = yOf.(insight.ceiling).round + 0.5;
-			Pen.strokeColor = colClipFaint;
-			Pen.line(x0 @ y, levelRight @ y);
-			Pen.stroke;
-			// and the target, across the loudness bars
-			y = yOf.(insight.target).round + 0.5;
-			Pen.strokeColor = colAccentFaint;
-			Pen.line((loudX - 4) @ y, right @ y);
+			y = this.yOf(insight.ceiling).round + 0.5;
+			Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.7);
+			Pen.line((x0 - 3) @ y, (levelRight + 3) @ y);
 			Pen.stroke;
 		};
 
-		// momentary and short term
+		// momentary and short term, the target band outlined across them
 		[["M", loud.momentary, loud.maxMomentary], ["S", loud.shortTerm, loud.maxShortTerm]].do { |item, k|
-			var x = loudX + (k * (lufsW + gap));
-			var val = item[1], mx = item[2];
-			Pen.fillColor = colTrack;
-			Pen.fillRect(Rect(x, barsTop, lufsW, barsH));
+			var x = loudX + (k * (loudW + gap)), val = item[1], mx = item[2];
+			Pen.fillColor = FxPalette.card;
+			Pen.fillRect(Rect(x, top, loudW, barsH));
 			if (val > floorDb) {
-				y = yOf.(val);
-				Pen.fillColor = InsightGUI.colGood;
-				Pen.fillRect(Rect(x, y, lufsW, barsTop + barsH - y));
+				y = this.yOf(val);
+				Pen.fillColor = FxPalette.fade(InsightPanel.loud, a);
+				Pen.fillRect(Rect(x, y, loudW, top + barsH - y));
 			};
 			if (mx > floorDb) {
-				Pen.fillColor = InsightGUI.colAccent;
-				Pen.fillRect(Rect(x, yOf.(mx) - 1, lufsW, 2));
+				Pen.fillColor = FxPalette.peak;
+				Pen.fillRect(Rect(x, this.yOf(mx) - 1, loudW, 2));
 			};
-			Pen.stringCenteredIn(item[0], Rect(x, barsTop + barsH + 1, lufsW, 14), font, InsightGUI.colDim);
+			Pen.stringCenteredIn(if (val > -100) { val.round(1).asInteger.asString } { "-inf" },
+				Rect(x - 6, 0, loudW + 12, 12), FxPalette.smallFont, FxPalette.text);
+			Pen.stringCenteredIn(item[0], Rect(x - 6, top + barsH + 2, loudW + 12, 12), FxPalette.smallFont, FxPalette.dim);
 		};
-
-		// the numbers
-		ry = barsTop + barsH + labelH + 6;
-		geoRy = ry;
-		over = insight.maxTruePeakDb > insight.ceiling;
-		this.prRow(ry, "M", InsightGUI.fmt(loud.momentary), "LUFS", "max", InsightGUI.fmt(loud.maxMomentary));
-		this.prRow(ry + 18, "S", InsightGUI.fmt(loud.shortTerm), "LUFS", "max", InsightGUI.fmt(loud.maxShortTerm));
-		this.prRow(ry + 36, "I", InsightGUI.fmt(loud.integrated), "LUFS", "LRA", InsightGUI.fmt(loud.range) ++ " LU");
-		this.prRow(ry + 54, "TP", InsightGUI.fmt(insight.maxTruePeakDb), "dBTP", "now",
-			InsightGUI.fmt((insight.truePeaks.maxItem ? 0).ampdb),
-			if (over) { InsightGUI.colClip } { InsightGUI.colText });
-		this.prRow(ry + 72, "peak", InsightGUI.fmt(insight.maxPeakDb), "dBFS", "overs",
-			insight.overs.asString, if (insight.overs > 0) { InsightGUI.colClip } { InsightGUI.colText });
-		this.prRow(ry + 90, "corr", InsightGUI.fmt(insight.correlation), "", "width",
-			InsightGUI.fmt(insight.width));
-	}
-
-	// label, value, unit | second label, second value
-	prRow { |y, label, value, unit, label2, value2, color|
-		var col = color ? InsightGUI.colText;
-		Pen.stringLeftJustIn(label, Rect(8, y, 40, 14), monoFont, InsightGUI.colDim);
-		Pen.stringRightJustIn(value, Rect(40, y, 52, 14), monoFont, col);
-		Pen.stringLeftJustIn(unit, Rect(96, y, 36, 14), font, InsightGUI.colDim);
-		Pen.stringLeftJustIn(label2, Rect(140, y, 40, 14), monoFont, InsightGUI.colDim);
-		Pen.stringRightJustIn(value2, Rect(180, y, 62, 14), monoFont, col);
+		band = Rect.fromPoints(
+			(loudX - 3) @ this.yOf(insight.target + Insight.tolerance).round,
+			(loudX + (2 * loudW) + gap + 3) @ this.yOf(insight.target - Insight.tolerance).round);
+		InsightPanel.drawTarget(band);
 	}
 
 	prChannelLabel { |i, n|
 		^case
-		{ n == 1 } { "M" }
+		{ n == 1 } { "mono" }
 		{ n == 2 } { ["L", "R"][i] }
 		{ true } { (i + 1).asString }
 	}
@@ -384,30 +460,22 @@ InsightMeterView {
 
 
 // ---------------------------------------------------------------------
-// the goniometer: mid up, side across, with correlation and balance
+// the goniometer: mid up, side across, the safe diagonals drawn; the
+// correlation as a bar from 0 at its right, the balance under it
 // ---------------------------------------------------------------------
 
 InsightImagerView {
 	var <insight, <view, drawnFrame = -1, <>hints;
-	var geoCorrY, geoBalY;						// set in prDraw, read by hintAt
-	var font, monoFont, colTrace, colGridFaint;
+	var geo;							// set in prDraw, read by hintAt
 
 	*new { |insight| ^super.new.init(insight) }
 
 	init { |argInsight|
 		insight = argInsight;
-		font = Font(Font.defaultSansFace, 9);
-		monoFont = Font(Font.defaultMonoFace, 10);
-		colTrace = InsightGUI.colMeter.copy.alpha_(0.45);
-		colGridFaint = InsightGUI.colGrid.copy.alpha_(0.5);
-		view = UserView().fixedWidth_(250).fixedHeight_(250);
-		view.background = InsightGUI.colOff;
+		view = UserView().minWidth_(180).minHeight_(150);
 		view.drawFunc = { |v| this.prDraw(v) };
 		view.acceptsMouseOver = true;
 		view.mouseOverAction = { |v, x, y| hints !? { hints.string_(this.hintAt(x, y)) } };
-		view.toolTip = "the stereo image: mid is up, side is across, so a mono signal is a"
-			"\nvertical line and an out of phase one a horizontal line."
-			"\ncorrelation runs from -1 (out of phase) to +1 (mono); balance from L to R.";
 		^this
 	}
 
@@ -415,59 +483,70 @@ InsightImagerView {
 		if (insight.imagerFrame != drawnFrame or: { insight.imagerData.isNil }) { view.refresh };
 	}
 
-	// the scope itself, or the two bars under it
 	hintAt { |x, y|
-		if (geoBalY.notNil and: { y >= (geoBalY - 4) }) {
-			^"Balance — the RMS difference between left and right. C is centred; otherwise the "
-			"signal leans left or right by the amount shown."
+		if (geo.notNil and: { y >= geo[\balY] }) {
+			^"balance  %   -   the rms of left against right; in the middle when centred".format(this.prBalanceText)
 		};
-		if (geoCorrY.notNil and: { y >= (geoCorrY - 4) }) {
-			^"Correlation — how alike the two channels are: +1 identical (safe to fold to mono), "
-			"0 unrelated, below 0 (red) they partly cancel when summed. Watch it before summing a mix."
+		if (geo.notNil and: { x >= geo[\corrX] }) {
+			^"correlation  %   -   +1 the same (folds to mono safely), 0 unrelated, under 0 (the outlined half) they cancel summed".format(this.prSigned(insight.correlation))
 		};
-		^"Goniometer — each point is one stereo sample: mid (L+R) up, side (L-R) across. "
-		"A vertical line is mono, a 45-degree lean is panned, a horizontal spread means out of phase."
+		^"stereo  width %   -   mid up, side across: upright is mono, a diagonal panned, across out of phase, red clipped".format(this.prWidthText)
+	}
+
+	prSigned { |v| ^if (v > 0.005) { "+" ++ FxPalette.fixed(v, 2) } { FxPalette.fixed(v, 2) } }
+
+	prWidthText { ^FxPalette.fixed(insight.width * 100, 0) ++ " %" }
+
+	prBalanceText {
+		var bal = insight.balance;
+		^if (bal.abs < 0.005) { "C" } { FxPalette.fixed(bal.abs * 100, 0) ++ " % " ++ if (bal < 0) { "L" } { "R" } }
 	}
 
 	prDraw { |v|
 		var w = v.bounds.width, h = v.bounds.height;
-		var data = insight.imagerData;
-		var barsH = 48;
-		var size = min(w - 24, h - barsH - 24);
-		var cx = w / 2, cy = 14 + (size / 2), rad = size / 2;
+		var data = insight.imagerData, live = insight.running, a = if (live) { 1 } { 0.5 };
+		var balH = 18, corrW = 40;
+		var size = min(w - corrW - 12, h - balH - 8).max(20);
+		var cx = 4 + ((w - corrW - 8) / 2), cy = 2 + (size / 2), rad = size / 2;
 		var d = rad * 0.7071;
 		var corr = insight.correlation, bal = insight.balance;
-		var by, bx, bw, mx, colCorr;
+		var bx, by, bh, bw, mid, y;
 
-		// remembered for hintAt: where the correlation and balance bars sit
-		geoCorrY = h - barsH + 6;
-		geoBalY = geoCorrY + 20;
-
+		geo = (corrX: w - corrW, balY: h - balH);
 		drawnFrame = insight.imagerFrame;
 		Pen.smoothing = true;
 		Pen.width = 1;
 
-		// the circle, the axes, the diagonals
-		Pen.strokeColor = InsightGUI.colGrid;
+		// the circle, the axes, the safe diagonals (hard left, hard right)
+		Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, 0.9);
 		Pen.addOval(Rect(cx - rad, cy - rad, size, size));
 		Pen.stroke;
+		Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, 0.5);
 		Pen.line((cx - rad) @ cy, (cx + rad) @ cy);
 		Pen.line(cx @ (cy - rad), cx @ (cy + rad));
 		Pen.stroke;
-		Pen.strokeColor = colGridFaint;
-		Pen.line((cx - d) @ (cy - d), (cx + d) @ (cy + d));
-		Pen.line((cx + d) @ (cy - d), (cx - d) @ (cy + d));
-		Pen.stroke;
-		Pen.stringAtPoint("L", (cx - d - 12) @ (cy - d - 12), font, InsightGUI.colDim);
-		Pen.stringAtPoint("R", (cx + d + 4) @ (cy - d - 12), font, InsightGUI.colDim);
-		Pen.stringAtPoint("M", (cx + 4) @ (cy - rad - 2), font, InsightGUI.colDim);
-		Pen.stringAtPoint("S", (cx + rad + 2) @ (cy - 12), font, InsightGUI.colDim);
+		Pen.use {
+			Pen.lineDash = FloatArray[2, 3];
+			Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.35);
+			Pen.line((cx - d) @ (cy - d), (cx + d) @ (cy + d));
+			Pen.line((cx + d) @ (cy - d), (cx - d) @ (cy + d));
+			Pen.stroke;
+		};
+		Pen.stringAtPoint("L", (cx - d - 10) @ (cy - d - 12), FxPalette.smallFont, FxPalette.dim);
+		Pen.stringAtPoint("R", (cx + d + 4) @ (cy - d - 12), FxPalette.smallFont, FxPalette.dim);
+		Pen.stringAtPoint("M", (cx + 3) @ (cy - rad), FxPalette.smallFont, FxPalette.dim);
+		Pen.stringAtPoint("S", (cx + rad - 8) @ (cy + 1), FxPalette.smallFont, FxPalette.dim);
 
-		// the trace: one line through every sample of the snapshot, radius
-		// on a square root scale so the quiet end is where the eye is
-		if (data.notNil and: { data.size >= 4 }) {
-			var n = data.size div: 2, first = true;
-			Pen.strokeColor = colTrace;
+		case
+		{ insight.channels < 2 } {
+			Pen.stringCenteredIn("one channel - no image", Rect(cx - rad, cy + 8, size, 14),
+				FxPalette.smallFont, FxPalette.dim);
+		}
+		{ data.notNil and: { data.size >= 4 } } {
+			// one line through every sample of the snapshot, the radius on a square
+			// root scale so the quiet end is where the eye is; clipped samples red
+			var n = data.size div: 2, first = true, clipped = [];
+			Pen.strokeColor = FxPalette.fade(FxPalette.wave, 0.5 * a);
 			n.do { |k|
 				var l = data[2 * k] ? 0, r = data[(2 * k) + 1] ? 0;
 				var s = (l - r) * 0.7071, m = (l + r) * 0.7071;
@@ -481,139 +560,334 @@ InsightImagerView {
 					px = cx;
 					py = cy;
 				};
+				if ((l.abs >= 1) or: { r.abs >= 1 }) { clipped = clipped.add(px @ py) };
 				if (first) { Pen.moveTo(px @ py); first = false } { Pen.lineTo(px @ py) };
 			};
 			Pen.stroke;
+			Pen.fillColor = FxPalette.clip;
+			clipped.do { |p| Pen.fillOval(Rect(p.x - 1.5, p.y - 1.5, 3, 3)) };
+		}
+		{ true } {
+			Pen.stringCenteredIn(if (live) { "no signal" } { "stopped" }, Rect(cx - rad, cy + 8, size, 14),
+				FxPalette.smallFont, FxPalette.dim);
 		};
 
-		// correlation: from the middle out, red below zero
-		by = h - barsH + 6;
-		bx = 40;
-		bw = w - 40 - 44;
-		mx = bx + (bw / 2);
-		colCorr = case
-			{ corr < 0 } { InsightGUI.colClip }
-			{ corr > 0.5 } { InsightGUI.colGood }
-			{ true } { InsightGUI.colMeter };
-		Pen.stringLeftJustIn("corr", Rect(6, by - 3, 34, 14), font, InsightGUI.colDim);
-		Pen.fillColor = InsightGUI.colBg;
-		Pen.fillRect(Rect(bx, by, bw, 8));
-		Pen.fillColor = colCorr;
-		if (corr >= 0) {
-			Pen.fillRect(Rect(mx, by, bw / 2 * corr, 8));
-		} {
-			Pen.fillRect(Rect(mx + (bw / 2 * corr), by, bw / 2 * corr.neg, 8));
-		};
-		Pen.fillColor = InsightGUI.colPeak;
-		Pen.fillRect(Rect(mx - 0.5, by - 2, 1, 12));
-		Pen.stringRightJustIn(InsightGUI.fmt(corr), Rect(w - 42, by - 3, 36, 14), monoFont, InsightGUI.colText);
+		// correlation: a bar from 0, up to +1, down to -1; the lower half outlined
+		bx = w - corrW + 14;
+		bw = 8;
+		by = 12;
+		bh = h - balH - 16;
+		mid = by + (bh / 2);
+		Pen.fillColor = FxPalette.card;
+		Pen.fillRect(Rect(bx, by, bw, bh));
+		Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.4);
+		Pen.addRect(Rect(bx - 2.5, mid + 0.5, bw + 5, (bh / 2) + 2));
+		Pen.stroke;
+		Pen.fillColor = FxPalette.fade(FxPalette.wave, a);
+		y = mid - (corr.clip(-1, 1) * bh / 2);
+		Pen.fillRect(Rect(bx, min(y, mid), bw, (y - mid).abs));
+		Pen.fillColor = FxPalette.peak;
+		Pen.fillRect(Rect(bx - 3, mid - 0.5, bw + 6, 1));
+		Pen.stringCenteredIn(this.prSigned(corr), Rect(w - corrW - 2, 0, corrW + 2, 12), FxPalette.smallFont, FxPalette.text);
+		Pen.stringLeftJustIn("+1", Rect(bx + bw + 3, by - 2, 20, 10), FxPalette.smallFont, FxPalette.dim);
+		Pen.stringLeftJustIn("0", Rect(bx + bw + 3, mid - 6, 20, 12), FxPalette.smallFont, FxPalette.dim);
+		Pen.stringLeftJustIn("-1", Rect(bx + bw + 3, by + bh - 8, 20, 10), FxPalette.smallFont, FxPalette.dim);
 
-		// balance: a mark between L and R
-		by = by + 20;
-		Pen.stringLeftJustIn("bal", Rect(6, by - 3, 34, 14), font, InsightGUI.colDim);
-		Pen.fillColor = InsightGUI.colBg;
-		Pen.fillRect(Rect(bx, by, bw, 8));
-		Pen.fillColor = InsightGUI.colPeak;
-		Pen.fillRect(Rect(mx - 0.5, by - 2, 1, 12));
-		Pen.fillColor = InsightGUI.colAccent;
-		Pen.fillRect(Rect(mx + (bw / 2 * bal.clip(-1, 1)) - 2, by - 1, 4, 10));
-		Pen.stringRightJustIn(
-			if (bal.abs < 0.005) { "C" } { InsightGUI.fmt(bal.abs) ++ if (bal < 0) { "L" } { "R" } },
-			Rect(w - 42, by - 3, 36, 14), monoFont, InsightGUI.colText);
+		// balance: a mark between L and R, the width at the right
+		by = h - balH + 6;
+		bx = 16;
+		bw = w - corrW - 30;
+		mid = bx + (bw / 2);
+		Pen.stringLeftJustIn("L", Rect(2, by - 4, 12, 12), FxPalette.smallFont, FxPalette.dim);
+		Pen.stringLeftJustIn("R", Rect(bx + bw + 4, by - 4, 12, 12), FxPalette.smallFont, FxPalette.dim);
+		Pen.fillColor = FxPalette.card;
+		Pen.fillRect(Rect(bx, by, bw, 5));
+		Pen.fillColor = FxPalette.dim;
+		Pen.fillRect(Rect(mid - 0.5, by - 2, 1, 9));
+		Pen.fillColor = FxPalette.fade(FxPalette.peak, a);
+		Pen.fillRect(Rect(mid + (bw / 2 * bal.clip(-1, 1)) - 2, by - 2, 4, 9));
+		Pen.stringLeftJustIn("width " ++ this.prWidthText, Rect(0, 0, 80, 12), FxPalette.smallFont, FxPalette.text);
 	}
 }
 
 
 // ---------------------------------------------------------------------
-// short term loudness over the last minute, with the target and the
-// integrated value drawn across it
+// short term loudness over the last minute (or five), the target as an
+// outlined band across it and the integrated value as a dotted line.
+// Dragging up and down moves the target.
 // ---------------------------------------------------------------------
 
 InsightHistoryView {
 	var <insight, <view, <>hints;
-	var <>floorDb = -60, <>topDb = 0;
-	var font, monoFont, colGridFaint, colFill;
-	var padL = 30, padR = 10, padT = 20, padB = 10;
+	var <>floorDb = -48, <>topDb = 0;
+	var hover, down = false, moved = false, downY = 0, downTarget = -14;
+	var padL = 30, padR = 8, padT = 6, padB = 16;
 
 	*new { |insight| ^super.new.init(insight) }
 
 	init { |argInsight|
 		insight = argInsight;
-		font = Font(Font.defaultSansFace, 9);
-		monoFont = Font(Font.defaultMonoFace, 10);
-		colGridFaint = InsightGUI.colGrid.copy.alpha_(0.35);
-		colFill = InsightGUI.colGood.copy.alpha_(0.18);
-		view = UserView().fixedHeight_(250).minWidth_(200);
-		view.background = InsightGUI.colOff;
+		view = UserView().minWidth_(200).minHeight_(120);
 		view.drawFunc = { |v| this.prDraw(v) };
 		view.acceptsMouseOver = true;
-		view.mouseOverAction = { |v, x, y| hints !? { hints.string_(this.hintAt(x, y)) } };
-		view.toolTip = "short term loudness over the last minute, newest at the right."
-			"\nthe orange line is the target, the white one the integrated value.";
+		view.mouseOverAction = { |v, x, y| hover = x @ y; this.prSay(x, y); view.refresh };
+		view.mouseLeaveAction = { hover = nil; view.refresh };
+		view.mouseDownAction = { |v, x, y, mod, button, count| this.prMouseDown(x, y, mod, count) };
+		view.mouseMoveAction = { |v, x, y, mod| this.prMouseMove(x, y, mod) };
+		view.mouseUpAction = { down = false; true };
+		view.mouseWheelAction = { |v, x, y, mod, xd, yd| this.prWheel(mod, yd) };
 		^this
 	}
 
 	refresh { view.refresh }
 
+	prSay { |x, y| hints !? { hints.string_(this.hintAt(x, y)) } }
+
+	prMouseDown { |x, y, mod, count|
+		if (count == 2) { insight.target = -14; down = false; this.prSay(x, y); ^true };
+		down = true;
+		moved = false;
+		downY = y;
+		downTarget = insight.target;
+		^true
+	}
+
+	prMouseMove { |x, y, mod|
+		var gh = view.bounds.height - padT - padB, perPx;
+		if (down.not) { ^true };
+		if ((y - downY).abs > 2) { moved = true };
+		if (moved) {
+			perPx = (topDb - floorDb) / gh.max(1) * if (mod.isShift) { 0.1 } { 1 };
+			insight.target = (downTarget - ((y - downY) * perPx)).round(if (mod.isShift) { 0.1 } { 1 });
+			hover = x @ y;
+			this.prSay(x, y);
+			view.refresh;
+		};
+		^true
+	}
+
+	prWheel { |mod, yd|
+		if (yd != 0) {
+			insight.target = (insight.target + (yd.sign * if (mod.isShift) { 0.1 } { 1 })).round(0.1);
+			view.refresh;
+		};
+		^true
+	}
+
+	// how far back a point is, and the loudness there
+	prAt { |x|
+		var hist = insight.history, gw = view.bounds.width - padL - padR;
+		var maxN = this.prMaxN, i, secs;
+		secs = (1 - ((x - padL) / gw).clip(0, 1)) * insight.historySeconds;
+		i = hist.size - 1 - (secs * Insight.loudnessRate).round.asInteger;
+		^[secs, if (i >= 0 and: { i < hist.size }) { hist[i] } { nil }]
+	}
+
+	prMaxN { ^(insight.historySeconds * Insight.loudnessRate).asInteger.max(10) }
+
 	hintAt { |x, y|
-		^"Short-term loudness over the last minute (LUFS), newest at the right. The orange line "
-		"is your target, the white line the integrated loudness so far — a steady mix sits near the target."
+		var at = this.prAt(x), lv = at[1], txt;
+		txt = "short term  ";
+		txt = txt ++ if (lv.notNil and: { lv > -100 }) {
+			"-% s: % LUFS, %".format(at[0].round(1).asInteger, InsightGUI.fmt(lv), InsightPanel.deltaText(lv, insight.target))
+		} { "" };
+		^txt ++ "   -   dotted: integrated; drag: the target"
 	}
 
 	prDraw { |v|
 		var w = v.bounds.width, h = v.bounds.height;
-		var hist = insight.history;
-		var maxN = (insight.historySeconds * Insight.loudnessRate).asInteger.max(10);
+		var hist = insight.history, maxN = this.prMaxN, live = insight.running, a = if (live) { 1 } { 0.5 };
 		var gw = w - padL - padR, gh = h - padT - padB;
 		var yOf = { |db| padT + (gh * (1 - ((db.clip(floorDb, topDb) - floorDb) / (topDb - floorDb)))) };
 		var xOf = { |i| padL + (gw * (i + (maxN - hist.size)) / maxN) };
 		var integrated = insight.loudness.integrated;
-		var y, db, first = true;
+		var y, x, db, step, secs, band, tag, tw, at;
 
 		Pen.smoothing = true;
 		Pen.width = 1;
-		Pen.stringAtPoint("short term loudness · last % s".format(insight.historySeconds),
-			padL @ 3, font, InsightGUI.colDim);
 
+		// LUFS up, seconds along
 		db = 0;
 		while { db >= floorDb } {
 			y = yOf.(db).round + 0.5;
-			Pen.strokeColor = if (db == 0) { InsightGUI.colGrid } { colGridFaint };
+			Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, if (db == 0) { 0.9 } { 0.35 });
 			Pen.line(padL @ y, (padL + gw) @ y);
 			Pen.stroke;
-			Pen.stringRightJustIn(db.asString, Rect(0, y - 7, padL - 4, 14), font, InsightGUI.colDim);
-			db = db - 12;
+			if ((db % 12) == 0) {
+				Pen.stringRightJustIn(db.asString, Rect(0, y - 6, padL - 4, 12), FxPalette.smallFont, FxPalette.dim);
+			};
+			db = db - 6;
+		};
+		secs = insight.historySeconds;
+		step = if (secs > 120) { 60 } { 15 };
+		(0, step .. secs).do { |s|
+			x = (padL + gw - (gw * s / secs)).round + 0.5;
+			Pen.strokeColor = FxPalette.fade(FxPalette.waveDim, 0.35);
+			Pen.line(x @ padT, x @ (padT + gh));
+			Pen.stroke;
+			tag = case { s == 0 } { "now" } { step >= 60 } { "-% min".format(s div: 60) } { true } { "-% s".format(s) };
+			case
+			{ s == secs } { Pen.stringLeftJustIn(tag, Rect(x + 2, padT + gh + 2, 48, 12), FxPalette.smallFont, FxPalette.dim) }
+			{ s == 0 } { Pen.stringRightJustIn(tag, Rect(x - 50, padT + gh + 2, 48, 12), FxPalette.smallFont, FxPalette.dim) }
+			{ true } { Pen.stringCenteredIn(tag, Rect(x - 24, padT + gh + 2, 48, 12), FxPalette.smallFont, FxPalette.dim) };
 		};
 
+		// the target, as an outlined band
+		band = Rect.fromPoints(padL @ yOf.(insight.target + Insight.tolerance).round,
+			(padL + gw) @ yOf.(insight.target - Insight.tolerance).round);
+		InsightPanel.drawTarget(band);
+		tag = "target " ++ InsightGUI.fmt(insight.target);
+		tw = tag.bounds(FxPalette.smallFont).width + 8;
+		Pen.fillColor = FxPalette.fade(FxPalette.waveBg, 0.85);
+		Pen.fillRect(Rect(padL + gw - tw - 2, band.top - 13, tw, 12));
+		Pen.stringCenteredIn(tag, Rect(padL + gw - tw - 2, band.top - 13, tw, 12), FxPalette.smallFont, FxPalette.text);
+
+		// short term: the area under the line, then the line
 		if (hist.size > 1) {
-			// the area under the line, then the line
+			var k = (hist.size / gw.max(1)).floor.asInteger.max(1), first = true;
 			Pen.moveTo(xOf.(0) @ (padT + gh));
-			hist.do { |lv, i| Pen.lineTo(xOf.(i) @ yOf.(lv.max(floorDb))) };
+			hist.do { |lv, i| if ((i % k) == 0 or: { i == (hist.size - 1) }) { Pen.lineTo(xOf.(i) @ yOf.(lv.max(floorDb))) } };
 			Pen.lineTo(xOf.(hist.size - 1) @ (padT + gh));
-			Pen.fillColor = colFill;
+			Pen.fillColor = FxPalette.fade(InsightPanel.loud, 0.16 * a);
 			Pen.fill;
-			Pen.strokeColor = InsightGUI.colGood;
+			Pen.strokeColor = FxPalette.fade(InsightPanel.loud, a);
+			Pen.width = 1.5;
 			hist.do { |lv, i|
-				var p = xOf.(i) @ yOf.(lv.max(floorDb));
-				if (first) { Pen.moveTo(p); first = false } { Pen.lineTo(p) };
+				if ((i % k) == 0 or: { i == (hist.size - 1) }) {
+					var p = xOf.(i) @ yOf.(lv.max(floorDb));
+					if (first) { Pen.moveTo(p); first = false } { Pen.lineTo(p) };
+				};
 			};
 			Pen.stroke;
+			Pen.width = 1;
+		} {
+			Pen.stringCenteredIn(if (live) { "the loudness draws here as it comes" } { "stopped" },
+				Rect(padL, padT + (gh / 2), gw, 16), FxPalette.font, FxPalette.dim);
 		};
 
-		Pen.use {
-			Pen.lineDash = FloatArray[3, 3];
-			y = yOf.(insight.target).round + 0.5;
-			Pen.strokeColor = InsightGUI.colAccent;
-			Pen.line(padL @ y, (padL + gw) @ y);
-			Pen.stroke;
-			if (integrated > floorDb) {
-				y = yOf.(integrated).round + 0.5;
-				Pen.strokeColor = InsightGUI.colPeak;
+		// the integrated loudness so far, dotted, named at its left
+		if (integrated > floorDb) {
+			y = yOf.(integrated).round + 0.5;
+			Pen.use {
+				Pen.lineDash = FloatArray[1, 3];
+				Pen.strokeColor = FxPalette.peak;
 				Pen.line(padL @ y, (padL + gw) @ y);
 				Pen.stroke;
-				Pen.stringRightJustIn("I " ++ InsightGUI.fmt(integrated), Rect(w - 80, y - 14, 70, 12),
-					monoFont, InsightGUI.colPeak);
 			};
+			tag = "integrated " ++ InsightGUI.fmt(integrated);
+			tw = tag.bounds(FxPalette.smallFont).width + 8;
+			Pen.fillColor = FxPalette.fade(FxPalette.waveBg, 0.85);
+			Pen.fillRect(Rect(padL + 2, y - 14, tw, 12));
+			Pen.stringCenteredIn(tag, Rect(padL + 2, y - 14, tw, 12), FxPalette.smallFont, FxPalette.peak);
+		};
+
+		// the pointer: a line and the reading there
+		if (hover.notNil and: { hover.x >= padL } and: { hover.x <= (padL + gw) }) {
+			at = this.prAt(hover.x);
+			x = hover.x.round + 0.5;
+			Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.45);
+			Pen.line(x @ padT, x @ (padT + gh));
+			Pen.stroke;
+			if (at[1].notNil and: { at[1] > -100 }) {
+				tag = "% s · % LUFS".format(at[0].round(1).asInteger.neg, InsightGUI.fmt(at[1]));
+				tw = tag.bounds(FxPalette.smallFont).width + 12;
+				x = (hover.x + 8).min(w - tw - 4);
+				Pen.fillColor = FxPalette.fade(FxPalette.bg, 0.9);
+				Pen.addRoundedRect(Rect(x, padT + 2, tw, 15), 3, 3);
+				Pen.fill;
+				Pen.stringCenteredIn(tag, Rect(x, padT + 2, tw, 15), FxPalette.smallFont, FxPalette.text);
+			};
+		};
+	}
+}
+
+
+// ---------------------------------------------------------------------
+// the numbers: the integrated loudness big (outlined while it is on the
+// target), how far it is from the target, then short term, range and the
+// peak to loudness ratio, true peak, sample peak and overs. Each says what
+// it measures in the hint bar; a click on the peaks drops them.
+// ---------------------------------------------------------------------
+
+InsightReadingsView {
+	classvar <bigFont;
+	var <insight, <view, <>hints;
+	var rowsTop;						// set in prDraw, read by hintAt
+
+	*initClass { bigFont = Font(Font.defaultSansFace, 30, true) }
+
+	*new { |insight| ^super.new.init(insight) }
+
+	init { |argInsight|
+		insight = argInsight;
+		view = UserView().fixedHeight_(104).minWidth_(220);
+		view.drawFunc = { |v| this.prDraw(v) };
+		view.acceptsMouseOver = true;
+		view.mouseOverAction = { |v, x, y| hints !? { hints.string_(this.hintAt(x, y)) } };
+		view.mouseDownAction = { |v, x, y| if (rowsTop.notNil and: { y >= rowsTop } and: { x >= (view.bounds.width / 2) }) { insight.resetPeaks }; true };
+		^this
+	}
+
+	refresh { view.refresh }
+
+	// [label, value, unit, colour, hint] for each small reading
+	readings {
+		var loud = insight.loudness, tp = insight.maxTruePeakDb, over = tp > insight.ceiling;
+		var plr = if (loud.integrated > -100 and: { tp > -100 }) { tp - loud.integrated } { nil };
+		^[
+			["short", InsightGUI.fmt(loud.shortTerm), "LUFS", nil,
+				"the last 3 s, K-weighted"],
+			["true peak", InsightGUI.fmt(tp), "dBTP", if (over) { FxPalette.clip },
+				"the highest since reset, between the samples too; red past the ceiling; click: drop it"],
+			["range", InsightGUI.fmt(loud.range), "LU", nil,
+				"loudness range (LRA): how far apart the quiet and the loud parts are"],
+			["peak", InsightGUI.fmt(insight.maxPeakDb), "dBFS", if (insight.maxPeakDb > 0) { FxPalette.clip },
+				"the highest sample since reset; click: drop it"],
+			["plr", plr !? { InsightGUI.fmt(plr) } ? "-", "dB", nil,
+				"peak to loudness ratio: the punch left - a squashed master reads under 8"],
+			["overs", insight.overs.asString, "", if (insight.overs > 0) { FxPalette.clip },
+				"how many times the true peak crossed the ceiling; click: count again"]
+		]
+	}
+
+	hintAt { |x, y|
+		var col, row, rd;
+		if (rowsTop.isNil or: { y < rowsTop }) {
+			^"integrated  % LUFS, %   -   since reset, gated (BS.1770): what a delivery asks for, outlined within ±% LU"
+			.format(InsightGUI.fmt(insight.loudness.integrated),
+				InsightPanel.deltaText(insight.loudness.integrated, insight.target), Insight.tolerance)
+		};
+		col = if (x < (view.bounds.width / 2)) { 0 } { 1 };
+		row = ((y - rowsTop) / 16).floor.asInteger.clip(0, 2);
+		rd = this.readings[(row * 2) + col];
+		^"%  % %   -   %".format(rd[0], rd[1], rd[2], rd[4])
+	}
+
+	prDraw { |v|
+		var w = v.bounds.width, loud = insight.loudness, i = loud.integrated;
+		var on = (i > -100) and: { (i - insight.target).abs <= Insight.tolerance };
+		var num = InsightGUI.fmt(i), nw, box, colW = w / 2;
+		Pen.smoothing = true;
+		Pen.stringLeftJustIn("integrated", Rect(0, 0, 120, 12), FxPalette.smallFont, FxPalette.dim);
+		nw = num.bounds(bigFont).width;
+		box = Rect(0, 13, nw + 12, 38);
+		if (on) {
+			Pen.strokeColor = FxPalette.fade(FxPalette.text, 0.75);
+			Pen.width = 1;
+			Pen.addRoundedRect(box.insetBy(0.5, 0.5), 4, 4);
+			Pen.stroke;
+		};
+		Pen.stringLeftJustIn(num, Rect(6, 13, nw + 4, 38), bigFont, FxPalette.text);
+		Pen.stringLeftJustIn("LUFS", Rect(box.right + 6, 31, 40, 14), FxPalette.font, FxPalette.dim);
+		Pen.stringLeftJustIn(
+			if (on) { "on the target" } { InsightPanel.deltaText(i, insight.target) },
+			Rect(box.right + 46, 31, w - box.right - 46, 14), FxPalette.font, FxPalette.text);
+		rowsTop = 56;
+		this.readings.do { |rd, k|
+			var x = (k % 2) * colW, y = rowsTop + ((k div: 2) * 16);
+			Pen.stringLeftJustIn(rd[0], Rect(x, y, 60, 14), FxPalette.font, FxPalette.dim);
+			Pen.stringRightJustIn(rd[1], Rect(x + 52, y, colW - 52 - 40, 14), FxPalette.font, rd[3] ? FxPalette.text);
+			Pen.stringLeftJustIn(rd[2], Rect(x + colW - 36, y + 1, 36, 13), FxPalette.smallFont, FxPalette.dim);
 		};
 	}
 }
