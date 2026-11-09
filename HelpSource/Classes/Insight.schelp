@@ -1,7 +1,7 @@
 TITLE:: Insight
 summary:: a sound engineer's window on a bus: spectrum, loudness, true peak, image
 categories:: Libraries>Insight
-related:: Classes/InsightLoudness, Classes/InsightSpectrum, Classes/BusManager, Classes/Bus
+related:: Classes/InsightGUI, Classes/InsightPanel, Classes/InsightLoudness, Classes/InsightSpectrum, Classes/BusManager, Classes/Bus
 
 DESCRIPTION::
 Point it at a bus - by index, by strong::BusManager:: name, by link::Classes/Bus::, or at a module - and it shows what a mastering chain wants to know: the spectrum, the levels with true peak, loudness the way EBU R128 means it, and the stereo image. One synth does the per-sample work and the window draws what it finds.
@@ -16,7 +16,7 @@ Insight.open;                  // or, in one line, on the main out
 
 Everything you reach it by is on the class: there is one insight per name, the way there is one server, and code::Insight.at:: looks a name up again from anywhere. Nothing is ever allocated on the bus it watches and nothing is freed - an insight only reads, which is what makes it safe to point at anything.
 
-It depends on nothing. When strong::BusManager:: is installed alongside it, the bus can be a name, and the insight follows that name from then on - see link::#Buses by name::. When strong::ServerPanel:: is installed, its meter section grows a button that opens an insight on the main out.
+Its window is drawn with the widgets every effect window of the family shares (FxPalette, FxHeader, FxKnob), which come with strong::ParaEQ:: (the quark code::sc-eq::) - install that first. When strong::BusManager:: is installed alongside it, the bus can be a name, and the insight follows that name from then on - see link::#Buses by name::. When strong::ServerPanel:: is installed, its meter section grows a button that opens an insight on the main out.
 
 subsection:: What it measures
 
@@ -97,6 +97,47 @@ Open the window of the named insight, making the main-out insight if the name is
 METHOD:: freeAll
 Free every insight.
 
+METHOD:: presetNames
+The loudness targets, ready made ones first - streaming -14, apple music -16, mixdown -18, ebu r128 -23, atsc a/85 -24, film -27, loud master -9 - then the ones saved with link::#-saveAsPreset::. What the window's header steps through.
+RETURNS:: an Array of Symbols.
+
+METHOD:: targets
+The ready made targets, each code::[name, LUFS, dBTP]::.
+
+METHOD:: presetFile
+Where the targets you save are kept: a file of code::[name, LUFS, dBTP]:: lists, in the user support directory unless set.
+
+METHOD:: isUserPreset
+Whether a target was saved, rather than ready made.
+ARGUMENT:: name
+A Symbol or String.
+
+METHOD:: removePreset
+Forget a saved target. Ready made ones stay.
+ARGUMENT:: name
+A Symbol or String.
+
+METHOD:: tolerance
+How many LU either side of the target count as on it: the width of the outlined band in the window. 1 by default.
+
+METHOD:: settingKeys
+What link::#-settings:: holds and a copy carries.
+
+METHOD:: hasClipboard
+Whether link::#-copySettings:: has been called.
+
+METHOD:: panelClass
+link::Classes/InsightPanel::, what the shared window (FxDeviceGUI) builds.
+
+METHOD:: title
+code::"insight"::, the name in the window's header and title bar.
+
+METHOD:: windowSize
+1000 x 600.
+
+METHOD:: identityColour
+nil: an analyser adds nothing to the sound, so it has no colour of its own.
+
 
 INSTANCEMETHODS::
 
@@ -128,6 +169,17 @@ Whether the synth is up and its replies are arriving.
 
 METHOD:: reset
 Integrate again from now, and drop every held maximum: the loudness statistics, the highest peaks, the over count, the spectrum's held trace and the history.
+
+METHOD:: resetPeaks
+Drop what is held - the highest sample and true peaks, the over count, the loudest momentary and short term - and go on integrating. What a click on the window's meters does.
+
+METHOD:: enabled
+The same as link::#-running::, under the name the window's power button asks for.
+ARGUMENT:: flag
+true runs the analysis, false stops it.
+
+METHOD:: label
+The name, as a String: the window's title bar says it.
 
 METHOD:: loudness
 The link::Classes/InsightLoudness:: - momentary, short term, integrated, range.
@@ -187,6 +239,34 @@ The loudness aimed at, in LUFS: drawn across the loudness bars and the history. 
 METHOD:: ceiling
 The true peak level, in dBTP, past which a reading is an over. A mark, not a limiter.
 
+METHOD:: presetName
+The target these settings are - the name whose LUFS and dBTP match link::#-target:: and link::#-ceiling:: - or nil once one of them has moved.
+
+METHOD:: preset
+Set the target and the ceiling from a named target.
+ARGUMENT:: name
+One of link::#*presetNames::.
+
+METHOD:: saveAsPreset
+Keep the target and ceiling now under a name, in link::#*presetFile::. A ready made name is not overwritten.
+ARGUMENT:: name
+A String.
+RETURNS:: the name as a Symbol, or nil.
+
+METHOD:: settings
+Every setting (link::#*settingKeys::) as an Event; given one, sets them.
+ARGUMENT:: ev
+An Event, as answered.
+
+METHOD:: copySettings
+Keep every setting for link::#-pasteSettings::, in this one or another insight.
+
+METHOD:: pasteSettings
+Take the settings link::#-copySettings:: kept.
+
+METHOD:: restoreDefaults
+Back to how a new insight starts: fft 4096, the sum, +3 dB/oct, fast, held trace on, -96 dB floor, -14 LUFS, -1 dBTP.
+
 METHOD:: historySeconds
 How many seconds of short term loudness the history keeps.
 
@@ -195,7 +275,11 @@ How many frames the goniometer shows at once.
 
 METHOD:: gui
 Open, or bring to the front, this insight's window.
-RETURNS:: an InsightGUI.
+ARGUMENT:: x
+Left edge of the window, or nil.
+ARGUMENT:: y
+Top edge of the window, or nil.
+RETURNS:: an link::Classes/InsightGUI::.
 
 METHOD:: free
 Stop the analysis, close the window, and take the insight out of the registry.
@@ -212,7 +296,7 @@ Insight.open;
 // something to look at
 (
 x = { Splay.ar(SinOsc.ar([220, 440, 660, 990] * LFNoise0.kr(2).range(1, 1.02), 0, 0.1)) }.play;
-)
+);
 
 // read it in code
 i = Insight.at(\main);

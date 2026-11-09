@@ -1,0 +1,41 @@
+TITLE:: InsightReadingsView
+summary:: the numbers of an Insight window
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightPanel
+
+DESCRIPTION::
+The integrated loudness big, outlined while it is within link::Classes/Insight#*tolerance:: of the target, and how far from it in words; then short term, true peak, range (LRA), sample peak, peak to loudness ratio and overs - true peak, peak and overs red past the ceiling or 0 dBFS.
+
+A UserView the link::Classes/InsightPanel:: puts in a titled pane. It reads the insight and draws what it finds; the panel's updater calls refresh.
+
+table::
+## strong::click on true peak, peak or overs:: || drop what is held (link::Classes/Insight#-resetPeaks::)
+## strong::hover:: || what each number measures
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: insight
+The link::Classes/Insight:: to draw.
+
+INSTANCEMETHODS::
+
+METHOD:: view
+The UserView.
+
+METHOD:: insight
+The link::Classes/Insight::.
+
+METHOD:: hints
+The hint strip it speaks to, or nil.
+
+METHOD:: hintAt
+What the hint strip says for a point.
+ARGUMENT:: x
+Pointer x in the view.
+ARGUMENT:: y
+Pointer y in the view.
+
+METHOD:: readings
+code::[label, value, unit, colour, hint]:: for each small number.

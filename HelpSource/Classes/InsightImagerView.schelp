@@ -1,0 +1,37 @@
+TITLE:: InsightImagerView
+summary:: the stereo pane of an Insight window
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightPanel
+
+DESCRIPTION::
+The goniometer - one point a sample, mid up and side across, on a square root scale; the hard-left and hard-right diagonals dashed; clipped samples red - with the correlation as a bar from 0 (the half under 0, where the channels cancel, outlined), the balance under it and the width. One channel: it says there is no image.
+
+A UserView the link::Classes/InsightPanel:: puts in a titled pane. It reads the insight and draws what it finds; the panel's updater calls refresh.
+
+table::
+## strong::hover:: || the hint strip says what the scope, the correlation or the balance shows
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: insight
+The link::Classes/Insight:: to draw.
+
+INSTANCEMETHODS::
+
+METHOD:: view
+The UserView.
+
+METHOD:: insight
+The link::Classes/Insight::.
+
+METHOD:: hints
+The hint strip it speaks to, or nil.
+
+METHOD:: hintAt
+What the hint strip says for a point.
+ARGUMENT:: x
+Pointer x in the view.
+ARGUMENT:: y
+Pointer y in the view.

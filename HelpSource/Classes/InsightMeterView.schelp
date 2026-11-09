@@ -1,0 +1,52 @@
+TITLE:: InsightMeterView
+summary:: the levels and loudness pane of an Insight window
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightPanel
+
+DESCRIPTION::
+A bar per channel in dBFS - rms solid, the true peak pale above it, the highest since reset a white line and a number on top, a light that turns red past the ceiling - and two bars for momentary and short term loudness in LUFS, with the target across them as an outlined band and the ceiling dashed across the channels.
+
+A UserView the link::Classes/InsightPanel:: puts in a titled pane. It reads the insight and draws what it finds; the panel's updater calls refresh.
+
+table::
+## strong::drag on the channels:: || the ceiling (link::Classes/Insight#-ceiling::); shift: finer
+## strong::drag on M and S:: || the target (link::Classes/Insight#-target::); shift: finer
+## strong::wheel:: || the same side, in 0.5 dB / 1 LU steps
+## strong::double click:: || -1 dBTP on the channels, -14 LUFS on M and S
+## strong::click:: || drop what is held (link::Classes/Insight#-resetPeaks::)
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: insight
+The link::Classes/Insight:: to draw.
+
+INSTANCEMETHODS::
+
+METHOD:: view
+The UserView.
+
+METHOD:: insight
+The link::Classes/Insight::.
+
+METHOD:: hints
+The hint strip it speaks to, or nil.
+
+METHOD:: hintAt
+What the hint strip says for a point.
+ARGUMENT:: x
+Pointer x in the view.
+ARGUMENT:: y
+Pointer y in the view.
+
+METHOD:: sideAt
+code::\ceiling:: over the channels, code::\target:: over the loudness bars.
+ARGUMENT:: x
+Pointer x in the view.
+
+METHOD:: floorDb
+The bottom of the scale, -60.
+
+METHOD:: topDb
+The top of the scale, +3.

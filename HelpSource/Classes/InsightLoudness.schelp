@@ -75,6 +75,9 @@ How many channels a block carries.
 METHOD:: reset
 Forget everything: the histograms, the ring of recent blocks, the held maxima.
 
+METHOD:: resetMaxima
+Drop the loudest momentary and short term values and go on integrating: the histograms and the integrated loudness are kept.
+
 EXAMPLES::
 
 code::

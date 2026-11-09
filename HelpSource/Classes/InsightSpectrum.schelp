@@ -7,12 +7,12 @@ DESCRIPTION::
 The spectrum half of link::Classes/Insight::, on its own. A synth does one link::Classes/FFT:: and nothing else - it fills a buffer and never reads it back - and the language fetches that buffer a frame at a time and hands it here. This takes the loudest bin in each of its log spaced bands, which is the point of reducing it in the language rather than on the server: a band near the top of the range covers a hundred bins, and a tone in it is in one of them.
 
 code::
-sp = InsightSpectrum(4096, 48000);
-sp.take(frame, 0.066);         // a frame from b_getn, and the seconds since the last
-sp.levels;                     // dB per band, falling at fallDb a second
-sp.peaks;                      // the same, falling slower
-sp.maxima;                     // the loudest in each band since resetMaxima
-sp.freqs;                      // the frequency each band sits at
+~sp = InsightSpectrum(4096, 48000);
+~sp.take(~frame, 0.066);       // a frame from b_getn, and the seconds since the last
+~sp.levels;                     // dB per band, falling at fallDb a second
+~sp.peaks;                      // the same, falling slower
+~sp.maxima;                     // the loudest in each band since resetMaxima
+~sp.freqs;                      // the frequency each band sits at
 ::
 
 Three traces, so the picture says three things at once: what is there now, what was there a moment ago, and the loudest there has been since the last reset. code::smoothing:: averages the power first, for a display that moves like a slow analyser. A full scale sine through the Hann window peaks at N/4 in its bin, so that is where 0 dB is.

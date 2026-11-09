@@ -1,0 +1,52 @@
+TITLE:: InsightSpectrumView
+summary:: the spectrum pane of an Insight window
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightPanel
+
+DESCRIPTION::
+Log frequency against dB, the loudest bin in each of 128 bands: blue now, white a moment ago, dashed the loudest since reset, with the tilt of link::Classes/Insight#-tilt:: added. Stopped, it keeps the held trace and says why nothing moves.
+
+A UserView the link::Classes/InsightPanel:: puts in a titled pane. It reads the insight and draws what it finds; the panel's updater calls refresh.
+
+table::
+## strong::drag up and down:: || the floor of the range (link::Classes/Insight#-spectrumFloor::), 0.3 dB a pixel
+## strong::shift + drag:: || the same, ten times finer
+## strong::wheel:: || the floor in 6 dB steps (shift: 1 dB)
+## strong::double click:: || the floor back to -96
+## strong::click:: || clear the held trace
+## strong::hover:: || a line and the frequency, Tidal note and level under the pointer; the hint strip says the region and the held level
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: insight
+The link::Classes/Insight:: to draw.
+
+INSTANCEMETHODS::
+
+METHOD:: view
+The UserView.
+
+METHOD:: insight
+The link::Classes/Insight::.
+
+METHOD:: hints
+The hint strip it speaks to, or nil.
+
+METHOD:: hintAt
+What the hint strip says for a point.
+ARGUMENT:: x
+Pointer x in the view.
+ARGUMENT:: y
+Pointer y in the view.
+
+METHOD:: freqAt
+The frequency at an x.
+ARGUMENT:: x
+Pointer x in the view.
+
+METHOD:: refresh
+Draw again if a new frame, the pointer or running changed.
+ARGUMENT:: frozen
+true while the picture is held.

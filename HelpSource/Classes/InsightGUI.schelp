@@ -1,0 +1,72 @@
+TITLE:: InsightGUI
+summary:: an insight in a window of its own
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightPanel, Classes/FxDeviceGUI
+
+DESCRIPTION::
+The window link::Classes/Insight#-gui:: opens: an link::Classes/InsightPanel:: in FxDeviceGUI, the window every effect of the family has - the panel, then one line along the bottom with the hint at its left and, at its right, what the insight reads and whether it runs (code::bus 0 · 2 ch · 48 kHz · running::).
+
+Running follows the window: it starts the analysis when it opens and stops it again when it closes, unless the insight was already running before.
+
+code::
+s.boot;
+i = Insight(\main, 0, 2);
+g = i.gui;                     // the same as InsightGUI(i)
+g.panel.frozen = true;         // hold the picture
+g.close;
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: unit
+The link::Classes/Insight:: to show.
+ARGUMENT:: x
+Left edge of the window, or nil.
+ARGUMENT:: y
+Top edge of the window, or nil.
+
+METHOD:: fmt
+A reading with one decimal and its sign, code::"-inf":: for silence: what every number in the window uses.
+ARGUMENT:: v
+A number, or nil.
+
+METHOD:: time
+Seconds as code::"mm:ss"::.
+ARGUMENT:: secs
+A number.
+
+INSTANCEMETHODS::
+
+METHOD:: insight
+The link::Classes/Insight:: shown.
+
+METHOD:: panel
+The link::Classes/InsightPanel::.
+
+METHOD:: window
+The Window.
+
+METHOD:: hints
+The hint strip along the bottom.
+
+METHOD:: frozen
+Whether the picture is held.
+
+METHOD:: spectrumView
+The spectrum pane, an link::Classes/InsightSpectrumView::.
+
+METHOD:: meterView
+The levels and loudness pane, an link::Classes/InsightMeterView::.
+
+METHOD:: imagerView
+The stereo pane, an link::Classes/InsightImagerView::.
+
+METHOD:: historyView
+The loudness history, an link::Classes/InsightHistoryView::.
+
+METHOD:: front
+Bring the window to the front.
+
+METHOD:: close
+Close it: the analysis stops unless it was running before the window opened.

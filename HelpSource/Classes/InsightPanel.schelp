@@ -1,0 +1,117 @@
+TITLE:: InsightPanel
+summary:: the analyser's face: a header and a dashboard of titled panes
+categories:: Libraries>Insight
+related:: Classes/Insight, Classes/InsightGUI, Classes/InsightSpectrumView, Classes/InsightMeterView, Classes/InsightHistoryView, Classes/InsightImagerView, Classes/InsightReadingsView
+
+DESCRIPTION::
+What link::Classes/InsightGUI:: shows: the header every effect window has (FxHeader) and, below it, five panes - the spectrum, the levels and loudness, the loudness history, the stereo image and the readings since reset. No mix and no output: an analyser changes nothing, so there is nothing to mix.
+
+table::
+## strong::header:: || the power button runs the analysis; the presets are loudness targets (link::Classes/Insight#*presetNames::), each a target LUFS and a true peak ceiling; save keeps your own; code::...:: copies, pastes, goes back to the defaults; then freeze, reset and the bus (BusManager's names, a number, the channels)
+## strong::spectrum:: || its source, tilt, speed, held trace and fft size along its top; drag up and down for the floor, a click clears the held trace
+## strong::levels · loudness:: || a bar per channel (dBFS) and M and S (LUFS); drag the ceiling on the channels and the target on M and S; a click drops what is held
+## strong::loudness · short term:: || one or five minutes; the target as an outlined band, the integrated loudness dotted; drag for the target
+## strong::stereo:: || the goniometer, correlation, balance, width
+## strong::since reset:: || the integrated loudness big, how far from the target, the rest of the numbers, the target and ceiling knobs
+::
+
+Signal blue for levels and spectra, the same blue paler for loudness (link::#*loud::), white for what is held, outlines for the targets (link::#*drawTarget::), red only for an over. Every pane says in the hint strip what is under the pointer.
+
+code::
+s.boot;
+i = Insight(\main, 0, 2);
+g = i.gui;
+p = g.panel;
+p.frozen = true;             // hold the picture, the analysis goes on
+p.frozen = false;
+p.sourceChoice.valueAction = 3;    // the spectrum of the mid
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: insight
+The link::Classes/Insight:: to show.
+ARGUMENT:: parent
+A parent view, or nil.
+
+METHOD:: loud
+The colour of loudness (LUFS): the signal's blue, paler.
+
+METHOD:: drawTarget
+Draw a target the way every pane does: a faint band, its outline, a dashed line through its middle. Inside a drawFunc.
+ARGUMENT:: rect
+The band, as a Rect.
+
+METHOD:: deltaText
+How far a loudness is from a target, in words: code::"on the target"::, code::"6.5 LU under the target"::.
+ARGUMENT:: lufs
+The loudness.
+ARGUMENT:: target
+The target.
+
+INSTANCEMETHODS::
+
+METHOD:: view
+The View, for a layout.
+
+METHOD:: insight
+The link::Classes/Insight:: shown.
+
+METHOD:: header
+The FxHeader.
+
+METHOD:: frozen
+Whether the picture is held. The analysis goes on underneath.
+ARGUMENT:: bool
+true holds it.
+
+METHOD:: running
+Whether the panes are being drawn (25 times a second). The window turns it on; it does not start or stop the analysis.
+ARGUMENT:: bool
+true draws.
+
+METHOD:: refresh
+Every control from the insight, and the panes drawn again.
+
+METHOD:: widgets
+The controls under the header, for dimming them while the analysis is off.
+
+METHOD:: busText
+What the bus button says: code::"bus 0 · 2 ch":: or the BusManager name followed.
+
+METHOD:: hints
+The hint strip the panel and its panes speak to.
+ARGUMENT:: bar
+An FxHintBar.
+
+METHOD:: tickAction
+A function called a couple of times a second while drawing: the window updates its footer from it.
+
+METHOD:: remove
+Stop drawing and listening. The window calls it when it closes.
+
+METHOD:: isClosed
+Whether the view is gone.
+
+METHOD:: spectrumView
+METHOD:: meterView
+METHOD:: historyView
+METHOD:: imagerView
+METHOD:: readingsView
+The panes.
+
+METHOD:: freezeSwitch
+METHOD:: resetButton
+METHOD:: busButton
+METHOD:: sourceChoice
+METHOD:: tiltChoice
+METHOD:: speedSwitch
+METHOD:: holdSwitch
+METHOD:: fftChoice
+METHOD:: spanSwitch
+METHOD:: targetKnob
+METHOD:: ceilingKnob
+METHOD:: readingsCard
+METHOD:: spectrumTitle
+The controls, for scripting and checks.
