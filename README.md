@@ -2,6 +2,8 @@
 
 **A sound engineer's window on a bus.** A SuperCollider extension.
 
+![Insight's window](images/insight.png)
+
 Point it at a bus - by index, by BusManager name, by Bus, or at a module - and
 it shows what a mastering chain wants to know: the spectrum, the levels with
 true peak, loudness the way EBU R128 means it, and the stereo image. One synth
@@ -316,6 +318,7 @@ is honest about where the energy is, which is what an eye on a mix wants.
 | [examples/insight-demo.scd](examples/insight-demo.scd) | a walkthrough you can evaluate block by block |
 | [install.scd](install.scd) | symlinks the repository into the extensions folder |
 | [sc-insight.quark](sc-insight.quark) | the quark manifest |
+| [images/](images/) | the screenshots in this README |
 
 ## Issues
 
